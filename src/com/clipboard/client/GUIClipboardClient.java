@@ -214,7 +214,7 @@ public class GUIClipboardClient extends JFrame {
         }
         
         try {
-            byte[] pushMsg = Protocol.pack(Protocol.CMD_PUSH, text);
+            byte[] pushMsg = Protocol.createPushMessage(text);
             out.write(pushMsg);
             out.flush();
 
@@ -236,7 +236,7 @@ public class GUIClipboardClient extends JFrame {
                 response = Protocol.unpack(fullResponse);
             }
 
-            if (response.getCmd() == Protocol.CMD_OK) {
+            if (response.isSuccessful()) {
                 JOptionPane.showMessageDialog(this, "文本发送成功！", "成功", JOptionPane.INFORMATION_MESSAGE);
                 inputArea.setText(""); // 清空输入框
                 
@@ -257,7 +257,7 @@ public class GUIClipboardClient extends JFrame {
         
         try {
             // 发送历史请求
-            byte[] historyMsg = Protocol.pack(Protocol.CMD_HISTORY);
+            byte[] historyMsg = Protocol.createHistoryMessage();
             out.write(historyMsg);
             out.flush();
 
@@ -277,7 +277,7 @@ public class GUIClipboardClient extends JFrame {
                 historyJson = new String(dataBytes, "UTF-8");
             }
 
-            if (response.getCmd() == Protocol.CMD_OK) {
+            if (response.isSuccessful()) {
                 // 解析JSON历史记录
                 parseAndDisplayHistory(historyJson);
             } else {

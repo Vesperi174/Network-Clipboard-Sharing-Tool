@@ -38,7 +38,7 @@ public class ClipboardClient {
      * @param text 要推送的文本
      */
     public void push(String text) throws IOException {
-        byte[] pushMsg = Protocol.pack(Protocol.CMD_PUSH, text);
+        byte[] pushMsg = Protocol.createPushMessage(text);
         out.write(pushMsg);
         out.flush();
 
@@ -59,7 +59,7 @@ public class ClipboardClient {
             response = Protocol.unpack(fullResponse);
         }
 
-        if (response.getCmd() == Protocol.CMD_OK) {
+        if (response.isSuccessful()) {
             System.out.println("[Client] PUSH success, " + text.getBytes("UTF-8").length + " bytes sent");
         } else {
             System.out.println("[Client] PUSH failed: " + response.getData());
@@ -72,7 +72,7 @@ public class ClipboardClient {
      * @return 服务端返回的文本
      */
     public String pull() throws IOException {
-        byte[] pullMsg = Protocol.pack(Protocol.CMD_PULL);
+        byte[] pullMsg = Protocol.createPullMessage();
         out.write(pullMsg);
         out.flush();
 
@@ -91,7 +91,7 @@ public class ClipboardClient {
             text = new String(dataBytes, "UTF-8");
         }
 
-        if (response.getCmd() == Protocol.CMD_OK) {
+        if (response.isSuccessful()) {
             System.out.println("[Client] PULL success, received " + text.getBytes("UTF-8").length + " bytes");
             System.out.println("[Client] Received: " + text);
         } else {

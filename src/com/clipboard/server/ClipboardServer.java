@@ -7,22 +7,37 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * 网络剪贴板共享工具 - 服务端
  * <p>
- * 监听指定端口，接受客户端连接，处理 PUSH/PULL 请求。
+ * 监听指定端口，接受客户端连接，处理 PUSH/PULL/HISTORY 请求。
  * 每个客户端连接在独立线程中处理。
+ * 应用策略模式和工厂模式优化命令处理逻辑
  */
 public class ClipboardServer {
-
     private static final int DEFAULT_PORT = 8888;
-    private String latestText = "";
-    private final List<String> history = new CopyOnWriteArrayList<>();
-    private static final int MAX_HISTORY_SIZE = 50;
+    
+    private final ClipboardHistoryManager historyManager;
+    private final Map<Byte, CommandHandler> commandHandlers;
+    
+    public ClipboardServer() {
+        this.historyManager = new ClipboardHistoryManager();
+        this.commandHandlers = initializeCommandHandlers();
+    }
+
+    /**
+     * 初始化命令处理器映射
+     */
+    private Map<Byte, CommandHandler> initializeCommandHandlers() {
+        Map<Byte, CommandHandler> handlers = new HashMap<>();
+        handlers.put(Protocol.CMD_PUSH, new PushCommandHandler(historyManager));
+        handlers.put(Protocol.CMD_PULL, new PullCommandHandler(historyManager));
+        handlers.put(Protocol.CMD_HISTORY, new HistoryCommandHandler(historyManager));
+        return handlers;
+    }
 
     /**
      * 启动服务端，监听默认端口
@@ -79,57 +94,12 @@ public class ClipboardServer {
                 System.arraycopy(dataBytes, 0, fullMsg, 5, dataLength);
                 Protocol.Message fullMessage = Protocol.unpack(fullMsg);
 
-                switch (fullMessage.getCmd()) {
-                    case Protocol.CMD_PUSH:
-                        System.out.println("[Server] PUSH from " + clientAddr + ", length=" + fullMessage.getData().length());
-                        synchronized (this) {
-                            latestText = fullMessage.getData();
-                            history.add(0, fullMessage.getData()); // Add to front of history
-                            if (history.size() > MAX_HISTORY_SIZE) {
-                                history.remove(history.size() - 1); // Remove oldest entry if exceeding max size
-                            }
-                        }
-                        byte[] okResponse = Protocol.pack(Protocol.CMD_OK);
-                        out.write(okResponse);
-                        out.flush();
-                        break;
-
-                    case Protocol.CMD_PULL:
-                        System.out.println("[Server] PULL from " + clientAddr);
-                        String text;
-                        synchronized (this) {
-                            text = latestText;
-                        }
-                        byte[] pullResponse = Protocol.pack(Protocol.CMD_OK, text);
-                        out.write(pullResponse);
-                        out.flush();
-                        break;
-
-                    case Protocol.CMD_HISTORY:
-                        System.out.println("[Server] HISTORY request from " + clientAddr);
-                        String historyJson;
-                        synchronized (this) {
-                            // Convert history list to JSON string
-                            StringBuilder sb = new StringBuilder();
-                            sb.append("[");
-                            for (int i = 0; i < history.size(); i++) {
-                                if (i > 0) sb.append(",");
-                                sb.append("\"").append(history.get(i).replace("\\", "\\\\").replace("\"", "\\\"")).append("\"");
-                            }
-                            sb.append("]");
-                            historyJson = sb.toString();
-                        }
-                        byte[] historyResponse = Protocol.pack(Protocol.CMD_OK, historyJson);
-                        out.write(historyResponse);
-                        out.flush();
-                        break;
-
-                    default:
-                        byte[] errorResponse = Protocol.pack(Protocol.CMD_ERROR, "Unknown command: " + fullMessage.getCmd());
-                        out.write(errorResponse);
-                        out.flush();
-                        break;
-                }
+                // 使用策略模式处理命令
+                CommandHandler handler = commandHandlers.getOrDefault(
+                    fullMessage.getCmd(), 
+                    new UnknownCommandHandler()
+                );
+                handler.handle(in, out, clientAddr, fullMessage);
             }
         } catch (IOException e) {
             System.out.println("[Server] Connection closed: " + clientAddr);

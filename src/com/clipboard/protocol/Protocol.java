@@ -9,6 +9,7 @@ import java.nio.charset.StandardCharsets;
  * 协议编解码工具类
  * <p>
  * 消息格式：1字节命令字 + 4字节数据长度(大端) + N字节数据内容(UTF-8)
+ * 应用工厂模式创建消息
  */
 public class Protocol {
 
@@ -18,6 +19,53 @@ public class Protocol {
     public static final byte CMD_ERROR = 4;
     public static final byte CMD_HISTORY = 5;
 
+    private Protocol() {
+        // 工具类不允许实例化
+    }
+
+    /**
+     * 创建PUSH消息
+     * @param data 要推送的数据
+     * @return 消息字节数组
+     */
+    public static byte[] createPushMessage(String data) {
+        return pack(CMD_PUSH, data);
+    }
+
+    /**
+     * 创建PULL消息
+     * @return 消息字节数组
+     */
+    public static byte[] createPullMessage() {
+        return pack(CMD_PULL);
+    }
+
+    /**
+     * 创建HISTORY消息
+     * @return 消息字节数组
+     */
+    public static byte[] createHistoryMessage() {
+        return pack(CMD_HISTORY);
+    }
+
+    /**
+     * 创建OK响应消息
+     * @param data 响应数据
+     * @return 消息字节数组
+     */
+    public static byte[] createOkMessage(String data) {
+        return pack(CMD_OK, data);
+    }
+
+    /**
+     * 创建错误响应消息
+     * @param errorMessage 错误信息
+     * @return 消息字节数组
+     */
+    public static byte[] createErrorMessage(String errorMessage) {
+        return pack(CMD_ERROR, errorMessage);
+    }
+
     /**
      * 打包消息：命令字 + 数据
      *
@@ -25,7 +73,7 @@ public class Protocol {
      * @param data 数据内容
      * @return 完整的消息字节数组
      */
-    public static byte[] pack(byte cmd, String data) {
+    private static byte[] pack(byte cmd, String data) {
         try {
             byte[] dataBytes = data.getBytes(StandardCharsets.UTF_8);
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
@@ -39,14 +87,14 @@ public class Protocol {
             throw new RuntimeException("Failed to pack message", e);
         }
     }
-
+    
     /**
      * 打包消息：命令字 + 空数据
      *
      * @param cmd 命令字
      * @return 完整的消息字节数组（仅命令字+长度0）
      */
-    public static byte[] pack(byte cmd) {
+    private static byte[] pack(byte cmd) {
         return pack(cmd, "");
     }
 
@@ -73,7 +121,7 @@ public class Protocol {
     }
 
     /**
-     * 消息实体类
+     * 消息实体类，使用不可变对象模式
      */
     public static class Message {
         private final byte cmd;
@@ -102,9 +150,19 @@ public class Protocol {
                     return "OK";
                 case CMD_ERROR:
                     return "ERROR";
+                case CMD_HISTORY:
+                    return "HISTORY";
                 default:
                     return "UNKNOWN(" + cmd + ")";
             }
+        }
+        
+        public boolean isSuccessful() {
+            return cmd == CMD_OK;
+        }
+        
+        public boolean isError() {
+            return cmd == CMD_ERROR;
         }
     }
 }
