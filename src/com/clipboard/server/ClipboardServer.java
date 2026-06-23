@@ -12,6 +12,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 网络剪贴板共享工具 - 服务端
@@ -23,15 +25,24 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class ClipboardServer {
     private static final int DEFAULT_PORT = 8888;
+    private static final int MAX_THREADS = 50;
     
     private final ClipboardHistoryManager historyManager;
     private final Map<Byte, CommandHandler> commandHandlers;
     private final ClientManager clientManager;
+    private final ExecutorService threadPool;
+    private final UnknownCommandHandler unknownHandler;
     
     public ClipboardServer() {
         this.historyManager = new ClipboardHistoryManager();
         this.commandHandlers = initializeCommandHandlers();
         this.clientManager = new ClientManager();
+        this.threadPool = Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "ClientHandler");
+            t.setDaemon(true);
+            return t;
+        });
+        this.unknownHandler = new UnknownCommandHandler();
     }
 
     /**
@@ -68,7 +79,7 @@ public class ClipboardServer {
                 String clientAddr = clientSocket.getInetAddress().getHostAddress() + ":" + clientSocket.getPort();
                 SimpleLogger.connectionStatus("CLIENT_CONNECTED", "New connection from " + clientAddr);
                 System.out.println("[Server] New connection from " + clientAddr);
-                new Thread(() -> handleClient(clientSocket, clientAddr)).start();
+                threadPool.submit(() -> handleClient(clientSocket, clientAddr));
             }
         } catch (IOException e) {
             SimpleLogger.error("Failed to start server on port " + port, e);
@@ -90,9 +101,9 @@ public class ClipboardServer {
             clientManager.register(clientAddr, out);
 
             SimpleLogger.info("Client session started for " + clientAddr);
+            byte[] header = new byte[5];
             
             while (true) {
-                byte[] header = new byte[5];
                 in.readFully(header);
                 
                 int dataLength = ((header[1] & 0xFF) << 24)
@@ -115,7 +126,7 @@ public class ClipboardServer {
 
                 CommandHandler handler = commandHandlers.getOrDefault(
                     fullMessage.getCmd(), 
-                    new UnknownCommandHandler()
+                    unknownHandler
                 );
                 boolean shouldBroadcast = handler.handle(in, out, clientAddr, fullMessage);
                 

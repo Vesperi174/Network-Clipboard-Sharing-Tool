@@ -42,28 +42,33 @@ public class ClipboardClient {
         out.write(pushMsg);
         out.flush();
 
-        byte[] responseHeader = new byte[5];
-        in.readFully(responseHeader);
-        Protocol.Message response = Protocol.unpack(responseHeader);
-
-        int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                | ((responseHeader[2] & 0xFF) << 16)
-                | ((responseHeader[3] & 0xFF) << 8)
-                | (responseHeader[4] & 0xFF);
-        if (dataLength > 0) {
-            byte[] dataBytes = new byte[dataLength];
-            in.readFully(dataBytes);
-            byte[] fullResponse = new byte[5 + dataLength];
-            System.arraycopy(responseHeader, 0, fullResponse, 0, 5);
-            System.arraycopy(dataBytes, 0, fullResponse, 5, dataLength);
-            response = Protocol.unpack(fullResponse);
-        }
-
+        Protocol.Message response = readResponse();
         if (response.isSuccessful()) {
             System.out.println("[Client] PUSH success, " + text.getBytes("UTF-8").length + " bytes sent");
         } else {
             System.out.println("[Client] PUSH failed: " + response.getData());
         }
+    }
+
+    /**
+     * 读取并解析服务端响应
+     */
+    private Protocol.Message readResponse() throws IOException {
+        byte[] header = new byte[5];
+        in.readFully(header);
+        int dataLength = ((header[1] & 0xFF) << 24)
+                | ((header[2] & 0xFF) << 16)
+                | ((header[3] & 0xFF) << 8)
+                | (header[4] & 0xFF);
+        if (dataLength > 0) {
+            byte[] dataBytes = new byte[dataLength];
+            in.readFully(dataBytes);
+            byte[] fullResponse = new byte[5 + dataLength];
+            System.arraycopy(header, 0, fullResponse, 0, 5);
+            System.arraycopy(dataBytes, 0, fullResponse, 5, dataLength);
+            return Protocol.unpack(fullResponse);
+        }
+        return Protocol.unpack(header);
     }
 
     /**
@@ -76,28 +81,16 @@ public class ClipboardClient {
         out.write(pullMsg);
         out.flush();
 
-        byte[] responseHeader = new byte[5];
-        in.readFully(responseHeader);
-        Protocol.Message response = Protocol.unpack(responseHeader);
-
-        int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                | ((responseHeader[2] & 0xFF) << 16)
-                | ((responseHeader[3] & 0xFF) << 8)
-                | (responseHeader[4] & 0xFF);
-        String text = "";
-        if (dataLength > 0) {
-            byte[] dataBytes = new byte[dataLength];
-            in.readFully(dataBytes);
-            text = new String(dataBytes, "UTF-8");
-        }
-
+        Protocol.Message response = readResponse();
         if (response.isSuccessful()) {
+            String text = response.getData();
             System.out.println("[Client] PULL success, received " + text.getBytes("UTF-8").length + " bytes");
             System.out.println("[Client] Received: " + text);
+            return text;
         } else {
             System.out.println("[Client] PULL failed: " + response.getData());
+            return "";
         }
-        return text;
     }
 
     /**

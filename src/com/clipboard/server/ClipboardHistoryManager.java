@@ -1,5 +1,7 @@
 package com.clipboard.server;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -24,11 +26,11 @@ public class ClipboardHistoryManager {
     }
 
     /**
-     * 获取历史记录
+     * 获取历史记录（直接返回内部列表，CopyOnWriteArrayList 迭代器自带快照隔离）
      * @return 历史记录列表
      */
     public List<ClipboardHistoryEntry> getHistory() {
-        return new CopyOnWriteArrayList<>(history);
+        return history;
     }
 
     /**

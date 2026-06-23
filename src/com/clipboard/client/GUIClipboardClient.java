@@ -568,7 +568,7 @@ public class GUIClipboardClient extends JFrame {
         String text = "";
         boolean inKey = false;
         boolean inValue = false;
-        String currentKey = "";
+        StringBuilder currentKey = new StringBuilder();
         StringBuilder currentValue = new StringBuilder();
         int quoteLevel = 0;
 
@@ -586,25 +586,26 @@ public class GUIClipboardClient extends JFrame {
                     } else if (inValue) {
                         inValue = false;
                         String value = currentValue.toString();
-                        if ("user".equals(currentKey)) {
+                        String key = currentKey.toString();
+                        if ("user".equals(key)) {
                             user = value;
-                        } else if ("text".equals(currentKey)) {
+                        } else if ("text".equals(key)) {
                             text = value;
                         }
                         currentValue.setLength(0);
-                        currentKey = "";
+                        currentKey.setLength(0);
                     }
                 }
                 continue;
             }
             if (quoteLevel == 1) {
                 if (inKey) {
-                    currentKey += c;
+                    currentKey.append(c);
                 } else if (inValue) {
                     currentValue.append(c);
                 }
             } else if (c == ':' && quoteLevel == 0) {
-                if (!currentKey.isEmpty()) {
+                if (currentKey.length() > 0) {
                     inValue = true;
                 }
             }
@@ -625,10 +626,18 @@ public class GUIClipboardClient extends JFrame {
     }
 
     private String escapeHtml(String text) {
-        return text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\n", "<br>");
+        StringBuilder sb = new StringBuilder(text.length() + 16);
+        for (int i = 0; i < text.length(); i++) {
+            char c = text.charAt(i);
+            switch (c) {
+                case '&': sb.append("&amp;"); break;
+                case '<': sb.append("&lt;"); break;
+                case '>': sb.append("&gt;"); break;
+                case '\n': sb.append("<br>"); break;
+                default: sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 
     private void startReaderThread() {
@@ -636,9 +645,9 @@ public class GUIClipboardClient extends JFrame {
         running = true;
         readerThread = new Thread(() -> {
             SimpleLogger.info("Reader thread started");
+            byte[] header = new byte[5];
             while (running && connected) {
                 try {
-                    byte[] header = new byte[5];
                     in.readFully(header);
                     int dataLength = ((header[1] & 0xFF) << 24)
                             | ((header[2] & 0xFF) << 16)
