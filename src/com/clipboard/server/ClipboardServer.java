@@ -1,0 +1,127 @@
+package com.clipboard.server;
+
+import com.clipboard.protocol.Protocol;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.net.ServerSocket;
+import java.net.Socket;
+
+/**
+ * 网络剪贴板共享工具 - 服务端
+ * <p>
+ * 监听指定端口，接受客户端连接，处理 PUSH/PULL 请求。
+ * 每个客户端连接在独立线程中处理。
+ */
+public class ClipboardServer {
+
+    private static final int DEFAULT_PORT = 8888;
+    private String latestText = "";
+
+    /**
+     * 启动服务端，监听默认端口
+     */
+    public void start() {
+        start(DEFAULT_PORT);
+    }
+
+    /**
+     * 启动服务端，监听指定端口
+     *
+     * @param port 监听端口号
+     */
+    public void start(int port) {
+        System.out.println("[Server] Listening on port " + port + "...");
+        try (ServerSocket serverSocket = new ServerSocket(port)) {
+            while (true) {
+                Socket clientSocket = serverSocket.accept();
+                String clientAddr = clientSocket.getInetAddress().getHostAddress() + ":" + clientSocket.getPort();
+                System.out.println("[Server] New connection from " + clientAddr);
+                new Thread(() -> handleClient(clientSocket, clientAddr)).start();
+            }
+        } catch (IOException e) {
+            System.err.println("[Server] Failed to start server: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 处理单个客户端连接
+     *
+     * @param clientSocket 客户端 Socket
+     * @param clientAddr   客户端地址标识
+     */
+    private void handleClient(Socket clientSocket, String clientAddr) {
+        try {
+            DataInputStream in = new DataInputStream(clientSocket.getInputStream());
+            DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream());
+
+            while (true) {
+                byte[] header = new byte[5];
+                in.readFully(header);
+                Protocol.Message msg = Protocol.unpack(header);
+
+                byte[] dataBytes = new byte[0];
+                int dataLength = ((header[1] & 0xFF) << 24)
+                        | ((header[2] & 0xFF) << 16)
+                        | ((header[3] & 0xFF) << 8)
+                        | (header[4] & 0xFF);
+                if (dataLength > 0) {
+                    dataBytes = new byte[dataLength];
+                    in.readFully(dataBytes);
+                }
+
+                byte[] fullMsg = new byte[5 + dataLength];
+                System.arraycopy(header, 0, fullMsg, 0, 5);
+                System.arraycopy(dataBytes, 0, fullMsg, 5, dataLength);
+                Protocol.Message fullMessage = Protocol.unpack(fullMsg);
+
+                switch (fullMessage.getCmd()) {
+                    case Protocol.CMD_PUSH:
+                        System.out.println("[Server] PUSH from " + clientAddr + ", length=" + fullMessage.getData().length());
+                        synchronized (this) {
+                            latestText = fullMessage.getData();
+                        }
+                        byte[] okResponse = Protocol.pack(Protocol.CMD_OK);
+                        out.write(okResponse);
+                        out.flush();
+                        break;
+
+                    case Protocol.CMD_PULL:
+                        System.out.println("[Server] PULL from " + clientAddr);
+                        String text;
+                        synchronized (this) {
+                            text = latestText;
+                        }
+                        byte[] pullResponse = Protocol.pack(Protocol.CMD_OK, text);
+                        out.write(pullResponse);
+                        out.flush();
+                        break;
+
+                    default:
+                        byte[] errorResponse = Protocol.pack(Protocol.CMD_ERROR, "Unknown command: " + fullMessage.getCmd());
+                        out.write(errorResponse);
+                        out.flush();
+                        break;
+                }
+            }
+        } catch (IOException e) {
+            System.out.println("[Server] Connection closed: " + clientAddr);
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException ignored) {
+            }
+        }
+    }
+
+    public static void main(String[] args) {
+        ClipboardServer server = new ClipboardServer();
+        if (args.length > 0) {
+            int port = Integer.parseInt(args[0]);
+            server.start(port);
+        } else {
+            server.start();
+        }
+    }
+}
