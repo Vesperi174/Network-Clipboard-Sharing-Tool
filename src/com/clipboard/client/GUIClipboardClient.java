@@ -41,7 +41,6 @@ public class GUIClipboardClient extends JFrame {
 
     private boolean connected = false;
     private String username = "";
-    private String lastSentText = "";
     private Timer refreshTimer;
     private ExecutorService networkExecutor;
     private JScrollPane inputScrollPane;
@@ -270,17 +269,19 @@ public class GUIClipboardClient extends JFrame {
             return;
         }
 
-        if (text.equals(lastSentText)) {
-            SimpleLogger.warn("Attempted to send duplicate text: " + text);
-            JOptionPane.showMessageDialog(this, "该内容与上次发送相同，请修改后再发送！", "提示", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
-
-        lastSentText = text;
         SimpleLogger.guiAction("SEND_TEXT", "User " + username + " initiated sending of text (length: " + text.length() + " chars)");
 
         networkExecutor.submit(() -> {
             try {
+                String historyJson = fetchHistoryJson();
+                if (textExistsInHistory(text, historyJson)) {
+                    SimpleLogger.warn("Attempted to send duplicate text that already exists in history: " + text);
+                    SwingUtilities.invokeLater(() -> {
+                        JOptionPane.showMessageDialog(this, "该内容已存在于共享剪贴板历史中！\n请修改内容后再发送。", "提示", JOptionPane.INFORMATION_MESSAGE);
+                    });
+                    return;
+                }
+
                 String pushData = username + "\n" + text;
                 SimpleLogger.networkOperation("SEND_PUSH_REQUEST", "Sending PUSH message with text: " + (text.length() > 50 ? text.substring(0, 50) + "..." : text));
 
@@ -314,6 +315,35 @@ public class GUIClipboardClient extends JFrame {
         });
     }
 
+    private String fetchHistoryJson() throws IOException {
+        byte[] historyMsg = Protocol.createHistoryMessage();
+        out.write(historyMsg);
+        out.flush();
+
+        byte[] header = new byte[5];
+        in.readFully(header);
+        int dataLength = ((header[1] & 0xFF) << 24)
+                | ((header[2] & 0xFF) << 16)
+                | ((header[3] & 0xFF) << 8)
+                | (header[4] & 0xFF);
+
+        byte[] fullMessage = new byte[5 + dataLength];
+        System.arraycopy(header, 0, fullMessage, 0, 5);
+        if (dataLength > 0) {
+            in.readFully(fullMessage, 5, dataLength);
+        }
+        Protocol.Message response = Protocol.unpack(fullMessage);
+        return response.getData();
+    }
+
+    private boolean textExistsInHistory(String text, String json) {
+        if (json == null || json.isEmpty() || json.equals("[]")) {
+            return false;
+        }
+        String escaped = text.replace("\\", "\\\\").replace("\"", "\\\"");
+        return json.contains("\"text\":\"" + escaped + "\"");
+    }
+
     private void refreshHistory() {
         if (!connected) {
             SimpleLogger.warn("Attempted to refresh history while not connected");
@@ -324,36 +354,10 @@ public class GUIClipboardClient extends JFrame {
 
         networkExecutor.submit(() -> {
             try {
-                byte[] historyMsg = Protocol.createHistoryMessage();
-                SimpleLogger.networkOperation("SEND_HISTORY_REQUEST", "Sending HISTORY request to server");
-
-                out.write(historyMsg);
-                out.flush();
-                SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
-
-                byte[] header = new byte[5];
-                in.readFully(header);
-                int dataLength = ((header[1] & 0xFF) << 24)
-                        | ((header[2] & 0xFF) << 16)
-                        | ((header[3] & 0xFF) << 8)
-                        | (header[4] & 0xFF);
-
-                byte[] fullMessage = new byte[5 + dataLength];
-                System.arraycopy(header, 0, fullMessage, 0, 5);
-                if (dataLength > 0) {
-                    in.readFully(fullMessage, 5, dataLength);
-                }
-                Protocol.Message response = Protocol.unpack(fullMessage);
-                String historyJson = response.getData();
-
+                String historyJson = fetchHistoryJson();
                 SwingUtilities.invokeLater(() -> {
-                    if (response.isSuccessful()) {
-                        SimpleLogger.info("Successfully retrieved history from server");
-                        parseAndDisplayHistory(historyJson);
-                    } else {
-                        SimpleLogger.error("Failed to retrieve history: " + response.getData());
-                        JOptionPane.showMessageDialog(this, "获取历史记录失败: " + response.getData(), "错误", JOptionPane.ERROR_MESSAGE);
-                    }
+                    SimpleLogger.info("Successfully retrieved history from server");
+                    parseAndDisplayHistory(historyJson);
                 });
             } catch (IOException e) {
                 SimpleLogger.error("IO Exception occurred while refreshing history", e);
