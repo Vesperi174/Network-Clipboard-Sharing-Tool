@@ -91,7 +91,7 @@ public class GUIClipboardClient extends JFrame {
         statusLabel = new JLabel("未连接");
 
         historyPanel = new JPanel();
-        historyPanel.setLayout(new BoxLayout(historyPanel, BoxLayout.Y_AXIS));
+        historyPanel.setLayout(new GridBagLayout());
         historyScrollPane = new JScrollPane(historyPanel);
         historyScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         historyScrollPane.getVerticalScrollBar().setUnitIncrement(16);
@@ -441,12 +441,118 @@ public class GUIClipboardClient extends JFrame {
         historyItems.addAll(items);
 
         historyPanel.removeAll();
+
+        addHeaderRow(0);
+
+        int row = 1;
         for (int i = 0; i < historyItems.size(); i++) {
             HistoryItem item = historyItems.get(i);
-            historyPanel.add(createHistoryItemPanel(item, i));
+            addHistoryRow(item, i, row);
+            row++;
+            addSeparatorRow(row);
+            row++;
         }
+
+        GridBagConstraints filler = new GridBagConstraints();
+        filler.gridx = 0;
+        filler.gridy = row;
+        filler.weighty = 1.0;
+        filler.fill = GridBagConstraints.VERTICAL;
+        historyPanel.add(Box.createVerticalGlue(), filler);
+
         historyPanel.revalidate();
         historyPanel.repaint();
+    }
+
+    private void addHeaderRow(int row) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = row;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.insets = new Insets(4, 8, 4, 4);
+
+        gbc.gridx = 0;
+        gbc.weightx = 0;
+        JLabel userHeader = new JLabel("用户名");
+        userHeader.setFont(userHeader.getFont().deriveFont(Font.BOLD, 12f));
+        userHeader.setPreferredSize(new Dimension(100, 22));
+        historyPanel.add(userHeader, gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        JLabel contentHeader = new JLabel("内容");
+        contentHeader.setFont(contentHeader.getFont().deriveFont(Font.BOLD, 12f));
+        historyPanel.add(contentHeader, gbc);
+
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        JLabel actionHeader = new JLabel("操作");
+        actionHeader.setFont(actionHeader.getFont().deriveFont(Font.BOLD, 12f));
+        actionHeader.setPreferredSize(new Dimension(110, 22));
+        historyPanel.add(actionHeader, gbc);
+    }
+
+    private void addSeparatorRow(int row) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = row;
+        gbc.gridx = 0;
+        gbc.gridwidth = 3;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.insets = new Insets(0, 0, 0, 0);
+        historyPanel.add(new JSeparator(JSeparator.HORIZONTAL), gbc);
+    }
+
+    private void addHistoryRow(HistoryItem item, int index, int row) {
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridy = row;
+        gbc.insets = new Insets(4, 8, 4, 4);
+        gbc.anchor = GridBagConstraints.FIRST_LINE_START;
+
+        gbc.gridx = 0;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        JLabel userLabel = new JLabel(item.user);
+        userLabel.setFont(userLabel.getFont().deriveFont(Font.BOLD, 12f));
+        if (item.isOwn(username)) {
+            userLabel.setForeground(new Color(0, 120, 212));
+        }
+        userLabel.setPreferredSize(new Dimension(100, 22));
+        historyPanel.add(userLabel, gbc);
+
+        gbc.gridx = 1;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        JLabel textLabel = new JLabel("<html>" + escapeHtml(item.text) + "</html>");
+        textLabel.setFont(textLabel.getFont().deriveFont(11f));
+        historyPanel.add(textLabel, gbc);
+
+        gbc.gridx = 2;
+        gbc.weightx = 0;
+        gbc.fill = GridBagConstraints.NONE;
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
+        JButton copyButton = new JButton("复制");
+        copyButton.setFont(copyButton.getFont().deriveFont(11f));
+        copyButton.setMargin(new Insets(2, 8, 2, 8));
+        copyButton.addActionListener(e -> copyToClipboard(item.text));
+        buttonPanel.add(copyButton);
+
+        if (item.isOwn(username)) {
+            JButton deleteButton = new JButton("删除");
+            deleteButton.setFont(deleteButton.getFont().deriveFont(11f));
+            deleteButton.setMargin(new Insets(2, 8, 2, 8));
+            final int idx = index;
+            deleteButton.addActionListener(e -> {
+                int confirm = JOptionPane.showConfirmDialog(this,
+                        "确定要删除这条记录吗？\n\"" + (item.text.length() > 40 ? item.text.substring(0, 40) + "..." : item.text) + "\"",
+                        "确认删除", JOptionPane.YES_NO_OPTION);
+                if (confirm == JOptionPane.YES_OPTION) {
+                    deleteHistoryItem(idx);
+                }
+            });
+            buttonPanel.add(deleteButton);
+        }
+        buttonPanel.setPreferredSize(new Dimension(110, 28));
+        historyPanel.add(buttonPanel, gbc);
     }
 
     private HistoryItem parseJsonObject(String obj) {
@@ -500,55 +606,6 @@ public class GUIClipboardClient extends JFrame {
             return new HistoryItem(user, text, -1);
         }
         return null;
-    }
-
-    private JPanel createHistoryItemPanel(HistoryItem item, int index) {
-        JPanel panel = new JPanel(new BorderLayout(5, 0));
-        panel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, Color.LIGHT_GRAY),
-                BorderFactory.createEmptyBorder(4, 8, 4, 8)
-        ));
-        panel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 65));
-
-        JPanel leftPanel = new JPanel(new BorderLayout(3, 2));
-        JLabel userLabel = new JLabel(item.user);
-        userLabel.setFont(userLabel.getFont().deriveFont(Font.BOLD, 12f));
-        if (item.isOwn(username)) {
-            userLabel.setForeground(new Color(0, 120, 212));
-        }
-        leftPanel.add(userLabel, BorderLayout.NORTH);
-
-        JLabel textLabel = new JLabel("<html><body style='width:400px'>" + escapeHtml(item.text) + "</body></html>");
-        textLabel.setFont(textLabel.getFont().deriveFont(11f));
-        leftPanel.add(textLabel, BorderLayout.CENTER);
-
-        panel.add(leftPanel, BorderLayout.CENTER);
-
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
-        JButton copyButton = new JButton("复制");
-        copyButton.setFont(copyButton.getFont().deriveFont(11f));
-        copyButton.setMargin(new Insets(2, 8, 2, 8));
-        copyButton.addActionListener(e -> copyToClipboard(item.text));
-        buttonPanel.add(copyButton);
-
-        if (item.isOwn(username)) {
-            JButton deleteButton = new JButton("删除");
-            deleteButton.setFont(deleteButton.getFont().deriveFont(11f));
-            deleteButton.setMargin(new Insets(2, 8, 2, 8));
-            final int idx = index;
-            deleteButton.addActionListener(e -> {
-                int confirm = JOptionPane.showConfirmDialog(this,
-                        "确定要删除这条记录吗？\n\"" + (item.text.length() > 40 ? item.text.substring(0, 40) + "..." : item.text) + "\"",
-                        "确认删除", JOptionPane.YES_NO_OPTION);
-                if (confirm == JOptionPane.YES_OPTION) {
-                    deleteHistoryItem(idx);
-                }
-            });
-            buttonPanel.add(deleteButton);
-        }
-
-        panel.add(buttonPanel, BorderLayout.EAST);
-        return panel;
     }
 
     private void copyToClipboard(String text) {
