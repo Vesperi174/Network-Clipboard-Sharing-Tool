@@ -27,11 +27,7 @@ dependency-reduced-pom.xml
 out/
 !**/src/main/**/out/
 !**/src/test/**/out/
-.idea/shelf/
-.idea/workspace.xml
-.idea/httpRequests/
-.idea/dataSources/
-.idea/dataSources.local.xml
+.idea/
 .kotlin
 
 ### Eclipse ###
