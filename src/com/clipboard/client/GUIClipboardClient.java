@@ -271,6 +271,7 @@ public class GUIClipboardClient extends JFrame {
                 byte[] responseHeader = new byte[5];
                 in.readFully(responseHeader);
                 Protocol.Message response = Protocol.unpack(responseHeader);
+                sending = false;
 
                 GUIClipboardClient self = this;
                 Protocol.Message finalResponse = response;
@@ -284,16 +285,15 @@ public class GUIClipboardClient extends JFrame {
                         SimpleLogger.error("Failed to send text: " + finalResponse.getData());
                         JOptionPane.showMessageDialog(self, "发送失败: " + finalResponse.getData(), "错误", JOptionPane.ERROR_MESSAGE);
                     }
-                    sending = false;
                 });
             } catch (IOException e) {
+                sending = false;
                 SimpleLogger.error("IO Exception occurred while sending text", e);
                 GUIClipboardClient self = this;
                 SwingUtilities.invokeLater(() -> {
                     JOptionPane.showMessageDialog(self, "发送文本时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
                     self.connected = false;
                     self.updateComponentStates();
-                    sending = false;
                 });
             }
         });
