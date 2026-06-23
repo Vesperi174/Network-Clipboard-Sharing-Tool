@@ -7,6 +7,9 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 网络剪贴板共享工具 - 服务端
@@ -18,6 +21,8 @@ public class ClipboardServer {
 
     private static final int DEFAULT_PORT = 8888;
     private String latestText = "";
+    private final List<String> history = new CopyOnWriteArrayList<>();
+    private static final int MAX_HISTORY_SIZE = 50;
 
     /**
      * 启动服务端，监听默认端口
@@ -81,6 +86,10 @@ public class ClipboardServer {
                         System.out.println("[Server] PUSH from " + clientAddr + ", length=" + fullMessage.getData().length());
                         synchronized (this) {
                             latestText = fullMessage.getData();
+                            history.add(0, fullMessage.getData()); // Add to front of history
+                            if (history.size() > MAX_HISTORY_SIZE) {
+                                history.remove(history.size() - 1); // Remove oldest entry if exceeding max size
+                            }
                         }
                         byte[] okResponse = Protocol.pack(Protocol.CMD_OK);
                         out.write(okResponse);
@@ -95,6 +104,25 @@ public class ClipboardServer {
                         }
                         byte[] pullResponse = Protocol.pack(Protocol.CMD_OK, text);
                         out.write(pullResponse);
+                        out.flush();
+                        break;
+
+                    case Protocol.CMD_HISTORY:
+                        System.out.println("[Server] HISTORY request from " + clientAddr);
+                        String historyJson;
+                        synchronized (this) {
+                            // Convert history list to JSON string
+                            StringBuilder sb = new StringBuilder();
+                            sb.append("[");
+                            for (int i = 0; i < history.size(); i++) {
+                                if (i > 0) sb.append(",");
+                                sb.append("\"").append(history.get(i).replace("\\", "\\\\").replace("\"", "\\\"")).append("\"");
+                            }
+                            sb.append("]");
+                            historyJson = sb.toString();
+                        }
+                        byte[] historyResponse = Protocol.pack(Protocol.CMD_OK, historyJson);
+                        out.write(historyResponse);
                         out.flush();
                         break;
 

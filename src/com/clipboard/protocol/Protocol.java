@@ -16,6 +16,7 @@ public class Protocol {
     public static final byte CMD_PULL = 2;
     public static final byte CMD_OK = 3;
     public static final byte CMD_ERROR = 4;
+    public static final byte CMD_HISTORY = 5;
 
     /**
      * 打包消息：命令字 + 数据
