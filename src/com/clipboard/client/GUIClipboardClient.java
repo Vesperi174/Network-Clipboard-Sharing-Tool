@@ -42,6 +42,7 @@ public class GUIClipboardClient extends JFrame {
     private boolean sending = false;
     private String lastSentText = "";
     private Timer refreshTimer;
+    private final Object networkLock = new Object();
     
     private JScrollPane scrollPane;
     private JScrollPane inputScrollPane;
@@ -263,13 +264,16 @@ public class GUIClipboardClient extends JFrame {
                 SimpleLogger.networkOperation("SEND_PUSH_REQUEST", "Sending PUSH message with text: " + (text.length() > 50 ? text.substring(0, 50) + "..." : text));
                 
                 byte[] pushMsg = Protocol.createPushMessage(text);
-                out.write(pushMsg);
-                out.flush();
-                
-                SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
+                byte[] responseHeader;
 
-                byte[] responseHeader = new byte[5];
-                in.readFully(responseHeader);
+                synchronized (networkLock) {
+                    out.write(pushMsg);
+                    out.flush();
+                    SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
+
+                    responseHeader = new byte[5];
+                    in.readFully(responseHeader);
+                }
                 Protocol.Message response = Protocol.unpack(responseHeader);
                 sending = false;
 
@@ -312,28 +316,31 @@ public class GUIClipboardClient extends JFrame {
         // 在后台线程中执行网络操作，避免阻塞UI线程
         Thread refreshThread = new Thread(() -> {
             try {
-                // 发送历史请求
                 byte[] historyMsg = Protocol.createHistoryMessage();
                 SimpleLogger.networkOperation("SEND_HISTORY_REQUEST", "Sending HISTORY request to server");
-                out.write(historyMsg);
-                out.flush();
                 
-                SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
+                byte[] responseHeader;
+                String historyJson;
+                Protocol.Message response;
+                synchronized (networkLock) {
+                    out.write(historyMsg);
+                    out.flush();
+                    SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
 
-                // 读取响应
-                byte[] responseHeader = new byte[5];
-                in.readFully(responseHeader);
-                Protocol.Message response = Protocol.unpack(responseHeader);
+                    responseHeader = new byte[5];
+                    in.readFully(responseHeader);
+                    response = Protocol.unpack(responseHeader);
 
-                int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                        | ((responseHeader[2] & 0xFF) << 16)
-                        | ((responseHeader[3] & 0xFF) << 8)
-                        | (responseHeader[4] & 0xFF);
-                String historyJson = "";
-                if (dataLength > 0) {
-                    byte[] dataBytes = new byte[dataLength];
-                    in.readFully(dataBytes);
-                    historyJson = new String(dataBytes, "UTF-8");
+                    int dataLength = ((responseHeader[1] & 0xFF) << 24)
+                            | ((responseHeader[2] & 0xFF) << 16)
+                            | ((responseHeader[3] & 0xFF) << 8)
+                            | (responseHeader[4] & 0xFF);
+                    historyJson = "";
+                    if (dataLength > 0) {
+                        byte[] dataBytes = new byte[dataLength];
+                        in.readFully(dataBytes);
+                        historyJson = new String(dataBytes, "UTF-8");
+                    }
                 }
 
                 // 在EDT中更新UI
