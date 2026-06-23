@@ -4,14 +4,9 @@ import com.clipboard.protocol.Protocol;
 import com.clipboard.util.SimpleLogger;
 
 import javax.swing.*;
-import javax.swing.border.AbstractBorder;
-import javax.swing.border.TitledBorder;
 import java.awt.*;
 import java.awt.datatransfer.Clipboard;
 import java.awt.datatransfer.StringSelection;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.geom.RoundRectangle2D;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -92,41 +87,32 @@ public class GUIClipboardClient extends JFrame {
     }
 
     private void initializeComponents() {
-        hostField = new DarkTextField("127.0.0.1", 12);
-        portField = new DarkTextField("8888", 6);
-        usernameField = new DarkTextField("", 10);
-        connectButton = new DarkButton("连接", true);
-        disconnectButton = new DarkButton("断开", false);
+        hostField = new JTextField("127.0.0.1", 12);
+        portField = new JTextField("8888", 6);
+        usernameField = new JTextField("", 10);
+        connectButton = new JButton("连接");
+        disconnectButton = new JButton("断开");
         statusLabel = new JLabel("未连接");
 
         historyPanel = new JPanel();
         historyPanel.setLayout(new GridBagLayout());
-        historyPanel.setBackground(new Color(0x1A, 0x1A, 0x2E));
         historyScrollPane = new JScrollPane(historyPanel);
         historyScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
         historyScrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        historyScrollPane.setBackground(new Color(0x1A, 0x1A, 0x2E));
-        historyScrollPane.getViewport().setBackground(new Color(0x1A, 0x1A, 0x2E));
 
         inputArea = new JTextArea(3, 30);
         inputArea.setLineWrap(true);
         inputArea.setWrapStyleWord(true);
         inputScrollPane = new JScrollPane(inputArea);
-        sendButton = new DarkButton("发送到共享剪贴板", true);
-        refreshButton = new DarkButton("刷新历史", false);
+        sendButton = new JButton("发送到共享剪贴板");
+        refreshButton = new JButton("刷新历史");
     }
 
     private void layoutComponents() {
         setLayout(new BorderLayout());
-        getContentPane().setBackground(new Color(0x0F, 0x0F, 0x1A));
 
         JPanel connectPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        connectPanel.setBackground(new Color(0x1A, 0x1A, 0x2E));
-        connectPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x55), 1, true),
-                "连接设置", TitledBorder.LEFT, TitledBorder.TOP,
-                connectPanel.getFont().deriveFont(Font.BOLD, 12f),
-                new Color(0xAA, 0xAA, 0xCC)));
+        connectPanel.setBorder(BorderFactory.createTitledBorder("连接设置"));
         connectPanel.add(new JLabel("主机:"));
         connectPanel.add(hostField);
         connectPanel.add(new JLabel("端口:"));
@@ -138,32 +124,20 @@ public class GUIClipboardClient extends JFrame {
         connectPanel.add(statusLabel);
 
         JPanel historyOuterPanel = new JPanel(new BorderLayout());
-        historyOuterPanel.setBackground(new Color(0x1A, 0x1A, 0x2E));
-        historyOuterPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x55), 1, true),
-                "共享剪贴板历史", TitledBorder.LEFT, TitledBorder.TOP,
-                historyOuterPanel.getFont().deriveFont(Font.BOLD, 12f),
-                new Color(0xAA, 0xAA, 0xCC)));
+        historyOuterPanel.setBorder(BorderFactory.createTitledBorder("共享剪贴板历史"));
         historyOuterPanel.add(historyScrollPane, BorderLayout.CENTER);
 
         JPanel historyButtonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        historyButtonPanel.setBackground(new Color(0x1A, 0x1A, 0x2E));
         historyButtonPanel.add(refreshButton);
         historyOuterPanel.add(historyButtonPanel, BorderLayout.SOUTH);
 
         JPanel sendPanel = new JPanel(new BorderLayout());
-        sendPanel.setBackground(new Color(0x1A, 0x1A, 0x2E));
-        sendPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x55), 1, true),
-                "发送文本", TitledBorder.LEFT, TitledBorder.TOP,
-                sendPanel.getFont().deriveFont(Font.BOLD, 12f),
-                new Color(0xAA, 0xAA, 0xCC)));
+        sendPanel.setBorder(BorderFactory.createTitledBorder("发送文本"));
         sendPanel.add(inputScrollPane, BorderLayout.CENTER);
         sendPanel.add(sendButton, BorderLayout.SOUTH);
 
         JSplitPane splitPane = new JSplitPane(JSplitPane.VERTICAL_SPLIT, historyOuterPanel, sendPanel);
         splitPane.setDividerLocation(400);
-        splitPane.setBackground(new Color(0x0F, 0x0F, 0x1A));
 
         add(connectPanel, BorderLayout.NORTH);
         add(splitPane, BorderLayout.CENTER);
@@ -508,7 +482,6 @@ public class GUIClipboardClient extends JFrame {
         gbc.weightx = 0;
         JLabel userHeader = new JLabel("用户名");
         userHeader.setFont(userHeader.getFont().deriveFont(Font.BOLD, 12f));
-        userHeader.setForeground(new Color(0xAA, 0xAA, 0xCC));
         userHeader.setPreferredSize(new Dimension(100, 22));
         historyPanel.add(userHeader, gbc);
 
@@ -516,14 +489,12 @@ public class GUIClipboardClient extends JFrame {
         gbc.weightx = 1.0;
         JLabel contentHeader = new JLabel("内容");
         contentHeader.setFont(contentHeader.getFont().deriveFont(Font.BOLD, 12f));
-        contentHeader.setForeground(new Color(0xAA, 0xAA, 0xCC));
         historyPanel.add(contentHeader, gbc);
 
         gbc.gridx = 2;
         gbc.weightx = 0;
         JLabel actionHeader = new JLabel("操作");
         actionHeader.setFont(actionHeader.getFont().deriveFont(Font.BOLD, 12f));
-        actionHeader.setForeground(new Color(0xAA, 0xAA, 0xCC));
         actionHeader.setPreferredSize(new Dimension(110, 22));
         historyPanel.add(actionHeader, gbc);
     }
@@ -551,9 +522,7 @@ public class GUIClipboardClient extends JFrame {
         JLabel userLabel = new JLabel(item.user);
         userLabel.setFont(userLabel.getFont().deriveFont(Font.BOLD, 12f));
         if (item.isOwn(username)) {
-            userLabel.setForeground(new Color(0x60, 0xA5, 0xFA));
-        } else {
-            userLabel.setForeground(new Color(0xE0, 0xE0, 0xE0));
+            userLabel.setForeground(new Color(0, 120, 212));
         }
         userLabel.setPreferredSize(new Dimension(100, 22));
         historyPanel.add(userLabel, gbc);
@@ -569,18 +538,16 @@ public class GUIClipboardClient extends JFrame {
         gbc.weightx = 0;
         gbc.fill = GridBagConstraints.NONE;
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        buttonPanel.setOpaque(false);
-        JButton copyButton = new DarkButton("复制", false);
+        JButton copyButton = new JButton("复制");
         copyButton.setFont(copyButton.getFont().deriveFont(11f));
         copyButton.setMargin(new Insets(2, 8, 2, 8));
         copyButton.addActionListener(e -> copyToClipboard(item.text));
         buttonPanel.add(copyButton);
 
         if (item.isOwn(username)) {
-            JButton deleteButton = new DarkButton("删除", false);
+            JButton deleteButton = new JButton("删除");
             deleteButton.setFont(deleteButton.getFont().deriveFont(11f));
             deleteButton.setMargin(new Insets(2, 8, 2, 8));
-            deleteButton.setForeground(new Color(0xFF, 0x6B, 0x6B));
             final int idx = index;
             deleteButton.addActionListener(e -> {
                 int confirm = JOptionPane.showConfirmDialog(this,
@@ -732,88 +699,9 @@ public class GUIClipboardClient extends JFrame {
         refreshButton.setEnabled(connected);
 
         if (connected) {
-            statusLabel.setForeground(new Color(0x4A, 0xDE, 0x80));
+            statusLabel.setForeground(Color.GREEN.darker());
         } else {
-            statusLabel.setForeground(new Color(0xFF, 0x6B, 0x6B));
-        }
-    }
-
-    private static class RoundedBorder extends AbstractBorder {
-        private final int radius;
-        private final Color color;
-
-        RoundedBorder(int radius, Color color) {
-            this.radius = radius;
-            this.color = color;
-        }
-
-        @Override
-        public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            g2.setColor(color);
-            g2.setStroke(new BasicStroke(1f));
-            g2.draw(new RoundRectangle2D.Double(x + 0.5, y + 0.5, width - 1, height - 1, radius, radius));
-            g2.dispose();
-        }
-
-        @Override
-        public Insets getBorderInsets(Component c) {
-            return new Insets(radius / 2 + 1, radius / 2 + 1, radius / 2 + 1, radius / 2 + 1);
-        }
-    }
-
-    private static class DarkButton extends JButton {
-        private final Color defaultBg = new Color(0x1E, 0x1E, 0x2E);
-        private final Color hoverBg = new Color(0x2A, 0x2A, 0x40);
-        private final Color accentBg = new Color(0x3B, 0x82, 0xF6);
-        private final Color accentHover = new Color(0x60, 0xA5, 0xFA);
-        private final boolean isAccent;
-
-        DarkButton(String text, boolean accent) {
-            super(text);
-            this.isAccent = accent;
-            setContentAreaFilled(false);
-            setFocusPainted(false);
-            setBorderPainted(false);
-            setOpaque(false);
-            setForeground(Color.WHITE);
-            setFont(getFont().deriveFont(Font.PLAIN, 12f));
-            setMargin(new Insets(6, 14, 6, 14));
-            setCursor(new Cursor(Cursor.HAND_CURSOR));
-            addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseEntered(MouseEvent e) { setCursor(new Cursor(Cursor.HAND_CURSOR)); repaint(); }
-                @Override
-                public void mouseExited(MouseEvent e) { repaint(); }
-            });
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-            int w = getWidth(), h = getHeight();
-            Color bg = defaultBg;
-            if (isAccent) {
-                bg = getModel().isRollover() ? accentHover : accentBg;
-            } else {
-                bg = getModel().isRollover() ? hoverBg : defaultBg;
-            }
-            g2.setColor(bg);
-            g2.fill(new RoundRectangle2D.Double(0, 0, w - 1, h - 1, 8, 8));
-            g2.dispose();
-            super.paintComponent(g);
-        }
-    }
-
-    private static class DarkTextField extends JTextField {
-        DarkTextField(String text, int cols) {
-            super(text, cols);
-            setBackground(new Color(0x1E, 0x1E, 0x2E));
-            setForeground(new Color(0xE0, 0xE0, 0xE0));
-            setCaretColor(new Color(0xE0, 0xE0, 0xE0));
-            setBorder(new RoundedBorder(8, new Color(0x33, 0x33, 0x55)));
+            statusLabel.setForeground(Color.RED);
         }
     }
 
@@ -822,37 +710,14 @@ public class GUIClipboardClient extends JFrame {
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-                applyDarkTheme();
             } catch (Exception e) {
-                e.printStackTrace();
+                try {
+                    UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
             }
             new GUIClipboardClient().setVisible(true);
         });
-    }
-
-    private static void applyDarkTheme() {
-        Color bg = new Color(0x0F, 0x0F, 0x1A);
-        Color panelBg = new Color(0x1A, 0x1A, 0x2E);
-        Color fg = new Color(0xE0, 0xE0, 0xE0);
-        Color accent = new Color(0x3B, 0x82, 0xF6);
-
-        UIManager.put("Panel.background", panelBg);
-        UIManager.put("OptionPane.background", panelBg);
-        UIManager.put("OptionPane.messageForeground", fg);
-        UIManager.put("Label.foreground", fg);
-        UIManager.put("TitledBorder.titleColor", new Color(0xAA, 0xAA, 0xCC));
-        UIManager.put("TextField.background", new Color(0x1E, 0x1E, 0x2E));
-        UIManager.put("TextField.foreground", fg);
-        UIManager.put("TextField.caretForeground", fg);
-        UIManager.put("TextArea.background", new Color(0x1E, 0x1E, 0x2E));
-        UIManager.put("TextArea.foreground", fg);
-        UIManager.put("TextArea.caretForeground", fg);
-        UIManager.put("ScrollPane.background", panelBg);
-        UIManager.put("ScrollPane.border", BorderFactory.createEmptyBorder());
-        UIManager.put("SplitPane.background", panelBg);
-        UIManager.put("SplitPane.dividerSize", 2);
-        UIManager.put("Separator.foreground", new Color(0x33, 0x33, 0x55));
-        UIManager.put("ToolTip.background", new Color(0x2A, 0x2A, 0x40));
-        UIManager.put("ToolTip.foreground", fg);
     }
 }
