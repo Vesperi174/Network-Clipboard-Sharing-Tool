@@ -1,6 +1,7 @@
 package com.clipboard.server;
 
 import com.clipboard.protocol.Protocol;
+import com.clipboard.util.SimpleLogger;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -52,15 +53,19 @@ public class ClipboardServer {
      * @param port 监听端口号
      */
     public void start(int port) {
+        SimpleLogger.applicationEvent("SERVER_START", "Starting clipboard server on port " + port);
         System.out.println("[Server] Listening on port " + port + "...");
         try (ServerSocket serverSocket = new ServerSocket(port)) {
+            SimpleLogger.info("Server socket bound successfully on port " + port);
             while (true) {
                 Socket clientSocket = serverSocket.accept();
                 String clientAddr = clientSocket.getInetAddress().getHostAddress() + ":" + clientSocket.getPort();
+                SimpleLogger.connectionStatus("CLIENT_CONNECTED", "New connection from " + clientAddr);
                 System.out.println("[Server] New connection from " + clientAddr);
                 new Thread(() -> handleClient(clientSocket, clientAddr)).start();
             }
         } catch (IOException e) {
+            SimpleLogger.error("Failed to start server on port " + port, e);
             System.err.println("[Server] Failed to start server: " + e.getMessage());
         }
     }
@@ -76,6 +81,8 @@ public class ClipboardServer {
             DataInputStream in = new DataInputStream(clientSocket.getInputStream());
             DataOutputStream out = new DataOutputStream(clientSocket.getOutputStream());
 
+            SimpleLogger.info("Client session started for " + clientAddr);
+            
             while (true) {
                 byte[] header = new byte[5];
                 in.readFully(header);
@@ -94,6 +101,10 @@ public class ClipboardServer {
                 System.arraycopy(dataBytes, 0, fullMsg, 5, dataLength);
                 Protocol.Message fullMessage = Protocol.unpack(fullMsg);
 
+                SimpleLogger.dataTransfer("INCOMING", "COMMAND", fullMsg.length, 
+                    "Received command from " + clientAddr + ", cmd: " + fullMessage.getCmd() + 
+                    ", data length: " + dataLength);
+
                 // 使用策略模式处理命令
                 CommandHandler handler = commandHandlers.getOrDefault(
                     fullMessage.getCmd(), 
@@ -102,16 +113,20 @@ public class ClipboardServer {
                 handler.handle(in, out, clientAddr, fullMessage);
             }
         } catch (IOException e) {
+            SimpleLogger.connectionStatus("CONNECTION_CLOSED", "Connection closed: " + clientAddr);
             System.out.println("[Server] Connection closed: " + clientAddr);
         } finally {
             try {
                 clientSocket.close();
+                SimpleLogger.info("Client socket closed for " + clientAddr);
             } catch (IOException ignored) {
+                SimpleLogger.debug("Exception ignored when closing client socket for " + clientAddr);
             }
         }
     }
 
     public static void main(String[] args) {
+        SimpleLogger.init("clipboard_server.log");
         ClipboardServer server = new ClipboardServer();
         if (args.length > 0) {
             int port = Integer.parseInt(args[0]);

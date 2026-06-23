@@ -68,4 +68,9 @@ Desktop.ini
 
 ### Logs ###
 *.log
+*.log.*
 logs/
+
+### Test files ###
+ClipboardIntegrationTest.java
+ClipboardIntegrationTest.class

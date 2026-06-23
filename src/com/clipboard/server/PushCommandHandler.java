@@ -1,6 +1,7 @@
 package com.clipboard.server;
 
 import com.clipboard.protocol.Protocol;
+import com.clipboard.util.SimpleLogger;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -19,11 +20,15 @@ public class PushCommandHandler implements CommandHandler {
 
     @Override
     public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
-        System.out.println("[Server] PUSH from " + clientAddr + ", length=" + message.getData().length());
-        historyManager.addHistory(message.getData());
+        String textData = message.getData();
+        SimpleLogger.info("Processing PUSH request from " + clientAddr + ", text length: " + textData.length());
+        System.out.println("[Server] PUSH from " + clientAddr + ", length=" + textData.length());
+        historyManager.addHistory(textData);
         
         byte[] okResponse = Protocol.createOkMessage("");
         outputStream.write(okResponse);
         outputStream.flush();
+        
+        SimpleLogger.networkOperation("PUSH_RESPONSE", "Sent OK response to " + clientAddr);
     }
 }

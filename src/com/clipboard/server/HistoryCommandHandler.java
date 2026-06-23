@@ -1,6 +1,7 @@
 package com.clipboard.server;
 
 import com.clipboard.protocol.Protocol;
+import com.clipboard.util.SimpleLogger;
 
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
@@ -19,6 +20,7 @@ public class HistoryCommandHandler implements CommandHandler {
 
     @Override
     public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+        SimpleLogger.info("Processing HISTORY request from " + clientAddr);
         System.out.println("[Server] HISTORY request from " + clientAddr);
         
         // 将历史记录转换为JSON格式
@@ -38,5 +40,7 @@ public class HistoryCommandHandler implements CommandHandler {
         byte[] historyResponse = Protocol.createOkMessage(historyJson);
         outputStream.write(historyResponse);
         outputStream.flush();
+        
+        SimpleLogger.networkOperation("HISTORY_RESPONSE", "Sent history response to " + clientAddr + ", items count: " + history.size());
     }
 }

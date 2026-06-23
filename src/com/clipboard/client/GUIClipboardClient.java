@@ -1,6 +1,7 @@
 package com.clipboard.client;
 
 import com.clipboard.protocol.Protocol;
+import com.clipboard.util.SimpleLogger;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -145,18 +146,23 @@ public class GUIClipboardClient extends JFrame {
     }
 
     private void connectToServer() {
-        if (connected) return;
+        if (connected) {
+            SimpleLogger.warn("Attempted to connect while already connected");
+            return;
+        }
         
         String host = hostField.getText().trim();
         int port;
         try {
             port = Integer.parseInt(portField.getText().trim());
         } catch (NumberFormatException e) {
+            SimpleLogger.error("Invalid port number entered: " + portField.getText().trim());
             JOptionPane.showMessageDialog(this, "无效的端口号！", "错误", JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         try {
+            SimpleLogger.info("Attempting to connect to server " + host + ":" + port);
             socket = new Socket(host, port);
             out = new DataOutputStream(socket.getOutputStream());
             in = new DataInputStream(socket.getInputStream());
@@ -171,8 +177,10 @@ public class GUIClipboardClient extends JFrame {
             // 初始加载历史记录
             refreshHistory();
             
+            SimpleLogger.connectionStatus("CONNECTED", "Successfully connected to " + host + ":" + port);
             JOptionPane.showMessageDialog(this, "成功连接到服务器！", "连接成功", JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException e) {
+            SimpleLogger.error("Failed to connect to server " + host + ":" + port + ", error: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "连接失败: " + e.getMessage(), "连接错误", JOptionPane.ERROR_MESSAGE);
             connected = false;
             updateComponentStates();
@@ -180,114 +188,173 @@ public class GUIClipboardClient extends JFrame {
     }
 
     private void disconnectFromServer() {
-        if (!connected) return;
+        if (!connected) {
+            SimpleLogger.warn("Attempted to disconnect while not connected");
+            return;
+        }
         
         try {
+            SimpleLogger.info("Initiating disconnection from server");
+            
             if (refreshTimer != null) {
                 refreshTimer.stop();
+                SimpleLogger.debug("Auto-refresh timer stopped");
             }
             
-            if (out != null) out.close();
-            if (in != null) in.close();
-            if (socket != null && !socket.isClosed()) socket.close();
+            if (out != null) {
+                out.close();
+                SimpleLogger.debug("Output stream closed");
+            }
+            if (in != null) {
+                in.close();
+                SimpleLogger.debug("Input stream closed");
+            }
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+                SimpleLogger.debug("Socket closed");
+            }
             
             connected = false;
             statusLabel.setText("未连接");
             updateComponentStates();
             
+            SimpleLogger.connectionStatus("DISCONNECTED", "Successfully disconnected from server");
             JOptionPane.showMessageDialog(this, "已断开连接", "断开连接", JOptionPane.INFORMATION_MESSAGE);
         } catch (IOException e) {
+            SimpleLogger.error("Error occurred while disconnecting from server: " + e.getMessage());
             JOptionPane.showMessageDialog(this, "断开连接时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
         }
     }
 
     private void sendText() {
         if (!connected) {
+            SimpleLogger.warn("Attempted to send text while not connected");
             JOptionPane.showMessageDialog(this, "请先连接到服务器！", "错误", JOptionPane.ERROR_MESSAGE);
             return;
         }
         
         String text = inputArea.getText().trim();
         if (text.isEmpty()) {
+            SimpleLogger.warn("Attempted to send empty text");
             JOptionPane.showMessageDialog(this, "请输入要发送的文本！", "错误", JOptionPane.WARNING_MESSAGE);
             return;
         }
         
-        try {
-            byte[] pushMsg = Protocol.createPushMessage(text);
-            out.write(pushMsg);
-            out.flush();
-
-            // 读取响应
-            byte[] responseHeader = new byte[5];
-            in.readFully(responseHeader);
-            Protocol.Message response = Protocol.unpack(responseHeader);
-
-            int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                    | ((responseHeader[2] & 0xFF) << 16)
-                    | ((responseHeader[3] & 0xFF) << 8)
-                    | (responseHeader[4] & 0xFF);
-            if (dataLength > 0) {
-                byte[] dataBytes = new byte[dataLength];
-                in.readFully(dataBytes);
-                byte[] fullResponse = new byte[5 + dataLength];
-                System.arraycopy(responseHeader, 0, fullResponse, 0, 5);
-                System.arraycopy(dataBytes, 0, fullResponse, 5, dataLength);
-                response = Protocol.unpack(fullResponse);
-            }
-
-            if (response.isSuccessful()) {
-                JOptionPane.showMessageDialog(this, "文本发送成功！", "成功", JOptionPane.INFORMATION_MESSAGE);
-                inputArea.setText(""); // 清空输入框
+        SimpleLogger.guiAction("SEND_TEXT", "User initiated sending of text (length: " + text.length() + " chars)");
+        
+        // 禁用发送按钮，防止重复点击
+        sendButton.setEnabled(false);
+        
+        // 在后台线程中执行网络操作，避免阻塞UI线程
+        Thread sendThread = new Thread(() -> {
+            try {
+                SimpleLogger.networkOperation("SEND_PUSH_REQUEST", "Sending PUSH message with text: " + (text.length() > 50 ? text.substring(0, 50) + "..." : text));
                 
-                // 刷新历史记录以显示新发送的文本
-                refreshHistory();
-            } else {
-                JOptionPane.showMessageDialog(this, "发送失败: " + response.getData(), "错误", JOptionPane.ERROR_MESSAGE);
+                byte[] pushMsg = Protocol.createPushMessage(text);
+                out.write(pushMsg);
+                out.flush();
+                
+                SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
+
+                // 读取响应
+                byte[] responseHeader = new byte[5];
+                in.readFully(responseHeader);
+                Protocol.Message response = Protocol.unpack(responseHeader);
+
+                // 在EDT中更新UI
+                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                Protocol.Message finalResponse = response; // 保存response引用以在lambda中使用
+                SwingUtilities.invokeLater(() -> {
+                    if (finalResponse.isSuccessful()) {
+                        SimpleLogger.info("Text sent successfully to server");
+                        JOptionPane.showMessageDialog(self, "文本发送成功！", "成功", JOptionPane.INFORMATION_MESSAGE);
+                        inputArea.setText(""); // 清空输入框
+                        refreshHistory(); // 刷新历史记录
+                    } else {
+                        SimpleLogger.error("Failed to send text: " + finalResponse.getData());
+                        JOptionPane.showMessageDialog(self, "发送失败: " + finalResponse.getData(), "错误", JOptionPane.ERROR_MESSAGE);
+                    }
+                    // 重新启用发送按钮
+                    sendButton.setEnabled(true);
+                });
+            } catch (IOException e) {
+                SimpleLogger.error("IO Exception occurred while sending text", e);
+                // 在EDT中更新UI
+                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(self, "发送文本时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                    self.connected = false;
+                    self.updateComponentStates();
+                });
             }
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "发送文本时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
-            connected = false;
-            updateComponentStates();
-        }
+        });
+        
+        sendThread.start();
     }
 
     private void refreshHistory() {
-        if (!connected) return;
-        
-        try {
-            // 发送历史请求
-            byte[] historyMsg = Protocol.createHistoryMessage();
-            out.write(historyMsg);
-            out.flush();
-
-            // 读取响应
-            byte[] responseHeader = new byte[5];
-            in.readFully(responseHeader);
-            Protocol.Message response = Protocol.unpack(responseHeader);
-
-            int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                    | ((responseHeader[2] & 0xFF) << 16)
-                    | ((responseHeader[3] & 0xFF) << 8)
-                    | (responseHeader[4] & 0xFF);
-            String historyJson = "";
-            if (dataLength > 0) {
-                byte[] dataBytes = new byte[dataLength];
-                in.readFully(dataBytes);
-                historyJson = new String(dataBytes, "UTF-8");
-            }
-
-            if (response.isSuccessful()) {
-                // 解析JSON历史记录
-                parseAndDisplayHistory(historyJson);
-            } else {
-                JOptionPane.showMessageDialog(this, "获取历史记录失败: " + response.getData(), "错误", JOptionPane.ERROR_MESSAGE);
-            }
-        } catch (IOException e) {
-            JOptionPane.showMessageDialog(this, "获取历史记录时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
-            connected = false;
-            updateComponentStates();
+        if (!connected) {
+            SimpleLogger.warn("Attempted to refresh history while not connected");
+            return;
         }
+        
+        SimpleLogger.debug("Initiating history refresh");
+        
+        // 在后台线程中执行网络操作，避免阻塞UI线程
+        Thread refreshThread = new Thread(() -> {
+            try {
+                // 发送历史请求
+                byte[] historyMsg = Protocol.createHistoryMessage();
+                SimpleLogger.networkOperation("SEND_HISTORY_REQUEST", "Sending HISTORY request to server");
+                out.write(historyMsg);
+                out.flush();
+                
+                SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
+
+                // 读取响应
+                byte[] responseHeader = new byte[5];
+                in.readFully(responseHeader);
+                Protocol.Message response = Protocol.unpack(responseHeader);
+
+                int dataLength = ((responseHeader[1] & 0xFF) << 24)
+                        | ((responseHeader[2] & 0xFF) << 16)
+                        | ((responseHeader[3] & 0xFF) << 8)
+                        | (responseHeader[4] & 0xFF);
+                String historyJson = "";
+                if (dataLength > 0) {
+                    byte[] dataBytes = new byte[dataLength];
+                    in.readFully(dataBytes);
+                    historyJson = new String(dataBytes, "UTF-8");
+                }
+
+                // 在EDT中更新UI
+                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                String jsonCopy = historyJson; // 保存historyJson引用以在lambda中使用
+                Protocol.Message finalResponse = response; // 保存response引用以在lambda中使用
+                SwingUtilities.invokeLater(() -> {
+                    if (finalResponse.isSuccessful()) {
+                        SimpleLogger.info("Successfully retrieved history from server, items count: " + 
+                            (jsonCopy.isEmpty() ? 0 : jsonCopy.split(",\"").length));
+                        // 解析JSON历史记录
+                        self.parseAndDisplayHistory(jsonCopy);
+                    } else {
+                        SimpleLogger.error("Failed to retrieve history: " + finalResponse.getData());
+                        JOptionPane.showMessageDialog(self, "获取历史记录失败: " + finalResponse.getData(), "错误", JOptionPane.ERROR_MESSAGE);
+                    }
+                });
+            } catch (IOException e) {
+                SimpleLogger.error("IO Exception occurred while refreshing history", e);
+                // 在EDT中更新UI
+                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                SwingUtilities.invokeLater(() -> {
+                    JOptionPane.showMessageDialog(self, "获取历史记录时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
+                    self.connected = false;
+                    self.updateComponentStates();
+                });
+            }
+        });
+        
+        refreshThread.start();
     }
 
     private void parseAndDisplayHistory(String json) {
@@ -367,7 +434,12 @@ public class GUIClipboardClient extends JFrame {
             Clipboard clipboard = Toolkit.getDefaultToolkit().getSystemClipboard();
             clipboard.setContents(selection, null);
             
+            SimpleLogger.guiAction("COPY_TO_CLIPBOARD", "Copied text to system clipboard: " + 
+                (selectedValue.length() > 50 ? selectedValue.substring(0, 50) + "..." : selectedValue));
+            
             JOptionPane.showMessageDialog(this, "已复制到系统剪贴板:\n" + selectedValue, "复制成功", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            SimpleLogger.warn("Attempted to copy null or unselected value from history list");
         }
     }
 
@@ -376,7 +448,7 @@ public class GUIClipboardClient extends JFrame {
             refreshTimer.stop();
         }
         
-        refreshTimer = new Timer(5000, e -> refreshHistory()); // 每5秒刷新一次
+        refreshTimer = new Timer(30000, e -> refreshHistory()); // 每30秒刷新一次
         refreshTimer.start();
     }
 
@@ -396,6 +468,7 @@ public class GUIClipboardClient extends JFrame {
     }
 
     public static void main(String[] args) {
+        SimpleLogger.init("clipboard_client_" + System.currentTimeMillis() + ".log");
         SwingUtilities.invokeLater(() -> {
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
