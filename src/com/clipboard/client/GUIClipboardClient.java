@@ -39,6 +39,8 @@ public class GUIClipboardClient extends JFrame {
     private JLabel statusLabel;
     
     private boolean connected = false;
+    private boolean sending = false;
+    private String lastSentText = "";
     private Timer refreshTimer;
     
     private JScrollPane scrollPane;
@@ -239,13 +241,23 @@ public class GUIClipboardClient extends JFrame {
             JOptionPane.showMessageDialog(this, "请输入要发送的文本！", "错误", JOptionPane.WARNING_MESSAGE);
             return;
         }
+
+        if (text.equals(lastSentText)) {
+            SimpleLogger.warn("Attempted to send duplicate text: " + text);
+            JOptionPane.showMessageDialog(this, "该内容与上次发送相同，请修改后再发送！", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
+
+        if (sending) {
+            SimpleLogger.warn("Send in progress, ignoring duplicate click");
+            JOptionPane.showMessageDialog(this, "正在发送中，请稍候...", "提示", JOptionPane.INFORMATION_MESSAGE);
+            return;
+        }
         
+        sending = true;
+        lastSentText = text;
         SimpleLogger.guiAction("SEND_TEXT", "User initiated sending of text (length: " + text.length() + " chars)");
         
-        // 禁用发送按钮，防止重复点击
-        sendButton.setEnabled(false);
-        
-        // 在后台线程中执行网络操作，避免阻塞UI线程
         Thread sendThread = new Thread(() -> {
             try {
                 SimpleLogger.networkOperation("SEND_PUSH_REQUEST", "Sending PUSH message with text: " + (text.length() > 50 ? text.substring(0, 50) + "..." : text));
@@ -256,35 +268,32 @@ public class GUIClipboardClient extends JFrame {
                 
                 SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
 
-                // 读取响应
                 byte[] responseHeader = new byte[5];
                 in.readFully(responseHeader);
                 Protocol.Message response = Protocol.unpack(responseHeader);
 
-                // 在EDT中更新UI
-                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
-                Protocol.Message finalResponse = response; // 保存response引用以在lambda中使用
+                GUIClipboardClient self = this;
+                Protocol.Message finalResponse = response;
                 SwingUtilities.invokeLater(() -> {
                     if (finalResponse.isSuccessful()) {
                         SimpleLogger.info("Text sent successfully to server");
                         JOptionPane.showMessageDialog(self, "文本发送成功！", "成功", JOptionPane.INFORMATION_MESSAGE);
-                        inputArea.setText(""); // 清空输入框
-                        refreshHistory(); // 刷新历史记录
+                        inputArea.setText("");
+                        refreshHistory();
                     } else {
                         SimpleLogger.error("Failed to send text: " + finalResponse.getData());
                         JOptionPane.showMessageDialog(self, "发送失败: " + finalResponse.getData(), "错误", JOptionPane.ERROR_MESSAGE);
                     }
-                    // 重新启用发送按钮
-                    sendButton.setEnabled(true);
+                    sending = false;
                 });
             } catch (IOException e) {
                 SimpleLogger.error("IO Exception occurred while sending text", e);
-                // 在EDT中更新UI
-                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                GUIClipboardClient self = this;
                 SwingUtilities.invokeLater(() -> {
                     JOptionPane.showMessageDialog(self, "发送文本时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
                     self.connected = false;
                     self.updateComponentStates();
+                    sending = false;
                 });
             }
         });
