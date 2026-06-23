@@ -326,29 +326,29 @@ public class GUIClipboardClient extends JFrame {
                 out.flush();
                 SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
 
-                byte[] responseHeader = new byte[5];
-                in.readFully(responseHeader);
-                Protocol.Message response = Protocol.unpack(responseHeader);
-
-                int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                        | ((responseHeader[2] & 0xFF) << 16)
-                        | ((responseHeader[3] & 0xFF) << 8)
-                        | (responseHeader[4] & 0xFF);
-                String historyJson = "";
+                byte[] header = new byte[5];
+                in.readFully(header);
+                int dataLength = ((header[1] & 0xFF) << 24)
+                        | ((header[2] & 0xFF) << 16)
+                        | ((header[3] & 0xFF) << 8)
+                        | (header[4] & 0xFF);
+                
+                byte[] fullMessage = new byte[5 + dataLength];
+                System.arraycopy(header, 0, fullMessage, 0, 5);
                 if (dataLength > 0) {
-                    byte[] dataBytes = new byte[dataLength];
-                    in.readFully(dataBytes);
-                    historyJson = new String(dataBytes, "UTF-8");
+                    in.readFully(fullMessage, 5, dataLength);
                 }
+                Protocol.Message response = Protocol.unpack(fullMessage);
+                String historyJson = response.getData();
 
                 GUIClipboardClient self = this;
-                String jsonCopy = historyJson;
                 Protocol.Message finalResponse = response;
+                String finalJson = historyJson;
                 SwingUtilities.invokeLater(() -> {
                     if (finalResponse.isSuccessful()) {
                         SimpleLogger.info("Successfully retrieved history from server, items count: " + 
-                            (jsonCopy.isEmpty() ? 0 : jsonCopy.split(",\"").length));
-                        self.parseAndDisplayHistory(jsonCopy);
+                            (finalJson.isEmpty() ? 0 : finalJson.split(",\"").length));
+                        self.parseAndDisplayHistory(finalJson);
                     } else {
                         SimpleLogger.error("Failed to retrieve history: " + finalResponse.getData());
                         JOptionPane.showMessageDialog(self, "获取历史记录失败: " + finalResponse.getData(), "错误", JOptionPane.ERROR_MESSAGE);
