@@ -699,9 +699,9 @@ public class GUIClipboardClient extends JFrame {
         refreshButton.setEnabled(connected);
 
         if (connected) {
-            statusLabel.setForeground(Color.GREEN.darker());
+            statusLabel.setForeground(new Color(100, 255, 100));
         } else {
-            statusLabel.setForeground(Color.RED);
+            statusLabel.setForeground(new Color(255, 100, 100));
         }
     }
 
@@ -709,10 +709,13 @@ public class GUIClipboardClient extends JFrame {
         SimpleLogger.init("clipboard_client_" + System.currentTimeMillis() + ".log");
         SwingUtilities.invokeLater(() -> {
             try {
-                UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+                com.formdev.flatlaf.FlatDarkLaf.setup();
+                UIManager.put("Button.arc", 8);
+                UIManager.put("Component.arc", 8);
+                UIManager.put("TextComponent.arc", 8);
             } catch (Exception e) {
                 try {
-                    UIManager.setLookAndFeel(UIManager.getCrossPlatformLookAndFeelClassName());
+                    UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
