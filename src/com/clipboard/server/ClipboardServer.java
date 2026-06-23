@@ -64,15 +64,13 @@ public class ClipboardServer {
             while (true) {
                 byte[] header = new byte[5];
                 in.readFully(header);
-                Protocol.Message msg = Protocol.unpack(header);
-
-                byte[] dataBytes = new byte[0];
+                
                 int dataLength = ((header[1] & 0xFF) << 24)
                         | ((header[2] & 0xFF) << 16)
                         | ((header[3] & 0xFF) << 8)
                         | (header[4] & 0xFF);
+                byte[] dataBytes = new byte[dataLength]; // Always allocate the exact size needed
                 if (dataLength > 0) {
-                    dataBytes = new byte[dataLength];
                     in.readFully(dataBytes);
                 }
 
