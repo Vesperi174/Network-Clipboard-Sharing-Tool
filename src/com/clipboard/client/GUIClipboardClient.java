@@ -294,38 +294,37 @@ public class GUIClipboardClient extends JFrame {
         // 简单解析JSON数组（这里为了不引入外部库，手动解析）
         List<String> historyItems = new ArrayList<>();
         
+        // 移除首尾的方括号
         if (json.startsWith("[") && json.endsWith("]")) {
-            String content = json.substring(1, json.length() - 1); // 去掉首尾的 []
+            String content = json.substring(1, json.length() - 1).trim();
             
             if (!content.isEmpty()) {
-                // 按逗号分割，注意跳过引号内的逗号
-                int bracketLevel = 0;
-                StringBuilder item = new StringBuilder();
+                // 按逗号分割，但要跳过引号内的逗号
+                int quoteLevel = 0;  // 引号层级，用来区分是否在引号内
+                int lastSplit = 0;   // 上一个分割点的位置
                 
                 for (int i = 0; i < content.length(); i++) {
                     char c = content.charAt(i);
                     
-                    if (c == '[') {
-                        bracketLevel++;
-                        item.append(c);
-                    } else if (c == ']') {
-                        bracketLevel--;
-                        item.append(c);
-                    } else if (c == '"' && (i == 0 || content.charAt(i - 1) != '\\')) {
-                        // 处理引号，但跳过转义的引号
-                        item.append(c);
-                    } else if (c == ',' && bracketLevel == 0) {
-                        // 在外层遇到逗号，说明是一个完整的项目
-                        historyItems.add(item.toString().trim().replaceAll("^\"|\"$", "")); // 去掉首尾引号
-                        item = new StringBuilder();
-                    } else {
-                        item.append(c);
+                    if (c == '"') {
+                        // 检查是否是转义的引号
+                        if (i == 0 || content.charAt(i - 1) != '\\') {
+                            quoteLevel = 1 - quoteLevel; // 切换引号层级
+                        }
+                    } else if (c == ',' && quoteLevel == 0) { // 只有在引号外的逗号才分割
+                        String element = content.substring(lastSplit, i).trim();
+                        // 去掉首尾的引号并处理转义字符
+                        element = unescapeJsonString(element);
+                        historyItems.add(element);
+                        lastSplit = i + 1; // 下一个元素从逗号后开始
                     }
                 }
                 
-                // 添加最后一个项目
-                if (item.length() > 0) {
-                    historyItems.add(item.toString().trim().replaceAll("^\"|\"$", ""));
+                // 添加最后一个元素
+                String lastElement = content.substring(lastSplit).trim();
+                if (!lastElement.isEmpty()) {
+                    lastElement = unescapeJsonString(lastElement);
+                    historyItems.add(lastElement);
                 }
             }
         }
@@ -335,6 +334,29 @@ public class GUIClipboardClient extends JFrame {
         for (String item : historyItems) {
             listModel.addElement(item);
         }
+    }
+    
+    /**
+     * 反转义JSON字符串中的特殊字符
+     * @param str 包含转义字符的字符串
+     * @return 反转义后的字符串
+     */
+    private String unescapeJsonString(String str) {
+        if (str.startsWith("\"") && str.endsWith("\"") && str.length() >= 2) {
+            str = str.substring(1, str.length() - 1); // 去掉首尾引号
+        }
+        
+        // 处理常见的JSON转义字符
+        str = str.replace("\\\"", "\"")
+                 .replace("\\\\", "\\")
+                 .replace("\\/", "/")
+                 .replace("\\b", "\b")
+                 .replace("\\f", "\f")
+                 .replace("\\n", "\n")
+                 .replace("\\r", "\r")
+                 .replace("\\t", "\t");
+        
+        return str;
     }
 
     private void copySelectedText() {
