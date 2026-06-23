@@ -37,6 +37,7 @@ public class ClipboardServer {
         handlers.put(Protocol.CMD_PUSH, new PushCommandHandler(historyManager));
         handlers.put(Protocol.CMD_PULL, new PullCommandHandler(historyManager));
         handlers.put(Protocol.CMD_HISTORY, new HistoryCommandHandler(historyManager));
+        handlers.put(Protocol.CMD_DELETE, new DeleteCommandHandler(historyManager));
         return handlers;
     }
 

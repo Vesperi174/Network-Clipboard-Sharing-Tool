@@ -18,6 +18,7 @@ public class Protocol {
     public static final byte CMD_OK = 3;
     public static final byte CMD_ERROR = 4;
     public static final byte CMD_HISTORY = 5;
+    public static final byte CMD_DELETE = 6;
 
     private Protocol() {
         // 工具类不允许实例化
@@ -46,6 +47,15 @@ public class Protocol {
      */
     public static byte[] createHistoryMessage() {
         return pack(CMD_HISTORY);
+    }
+
+    /**
+     * 创建DELETE消息
+     * @param index 要删除的历史记录索引
+     * @return 消息字节数组
+     */
+    public static byte[] createDeleteMessage(int index) {
+        return pack(CMD_DELETE, String.valueOf(index));
     }
 
     /**
@@ -152,6 +162,8 @@ public class Protocol {
                     return "ERROR";
                 case CMD_HISTORY:
                     return "HISTORY";
+                case CMD_DELETE:
+                    return "DELETE";
                 default:
                     return "UNKNOWN(" + cmd + ")";
             }
