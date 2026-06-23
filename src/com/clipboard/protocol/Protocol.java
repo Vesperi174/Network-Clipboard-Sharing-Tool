@@ -19,6 +19,7 @@ public class Protocol {
     public static final byte CMD_ERROR = 4;
     public static final byte CMD_HISTORY = 5;
     public static final byte CMD_DELETE = 6;
+    public static final byte CMD_NOTIFY_REFRESH = 7;
 
     private Protocol() {
         // 工具类不允许实例化
@@ -56,6 +57,14 @@ public class Protocol {
      */
     public static byte[] createDeleteMessage(int index) {
         return pack(CMD_DELETE, String.valueOf(index));
+    }
+
+    /**
+     * 创建NOTIFY_REFRESH消息（服务端推送，通知客户端刷新历史）
+     * @return 消息字节数组
+     */
+    public static byte[] createNotifyRefreshMessage() {
+        return pack(CMD_NOTIFY_REFRESH);
     }
 
     /**
@@ -164,6 +173,8 @@ public class Protocol {
                     return "HISTORY";
                 case CMD_DELETE:
                     return "DELETE";
+                case CMD_NOTIFY_REFRESH:
+                    return "NOTIFY_REFRESH";
                 default:
                     return "UNKNOWN(" + cmd + ")";
             }

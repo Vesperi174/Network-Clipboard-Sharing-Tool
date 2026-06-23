@@ -12,9 +12,10 @@ import java.io.IOException;
  */
 public class UnknownCommandHandler implements CommandHandler {
     @Override
-    public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+    public boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
         byte[] errorResponse = Protocol.createErrorMessage("Unknown command: " + message.getCmd());
         outputStream.write(errorResponse);
         outputStream.flush();
+        return false;
     }
 }

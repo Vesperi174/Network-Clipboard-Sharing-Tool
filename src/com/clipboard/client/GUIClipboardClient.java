@@ -13,8 +13,11 @@ import java.io.IOException;
 import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 网络剪贴板共享工具 - GUI客户端
@@ -41,8 +44,10 @@ public class GUIClipboardClient extends JFrame {
 
     private boolean connected = false;
     private String username = "";
-    private Timer refreshTimer;
     private ExecutorService networkExecutor;
+    private Thread readerThread;
+    private BlockingQueue<Protocol.Message> responseQueue;
+    private volatile boolean running = false;
     private JScrollPane inputScrollPane;
 
     private final List<HistoryItem> historyItems = new ArrayList<>();
@@ -195,7 +200,7 @@ public class GUIClipboardClient extends JFrame {
 
             statusLabel.setText("已连接 - " + username + " @ " + host + ":" + port);
             updateComponentStates();
-            startAutoRefresh();
+            startReaderThread();
             refreshHistory();
 
             SimpleLogger.connectionStatus("CONNECTED", "Successfully connected to " + host + ":" + port + " as " + username);
@@ -217,9 +222,11 @@ public class GUIClipboardClient extends JFrame {
         try {
             SimpleLogger.info("Initiating disconnection from server");
 
-            if (refreshTimer != null) {
-                refreshTimer.stop();
-                SimpleLogger.debug("Auto-refresh timer stopped");
+            running = false;
+            if (readerThread != null) {
+                readerThread.interrupt();
+                readerThread = null;
+                SimpleLogger.debug("Reader thread stopped");
             }
 
             if (networkExecutor != null && !networkExecutor.isShutdown()) {
@@ -290,9 +297,10 @@ public class GUIClipboardClient extends JFrame {
                 out.flush();
                 SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
 
-                byte[] responseHeader = new byte[5];
-                in.readFully(responseHeader);
-                Protocol.Message response = Protocol.unpack(responseHeader);
+                Protocol.Message response = pollResponse();
+                if (response == null) {
+                    throw new IOException("Interrupted while waiting for push response");
+                }
 
                 SwingUtilities.invokeLater(() -> {
                     if (response.isSuccessful()) {
@@ -320,20 +328,15 @@ public class GUIClipboardClient extends JFrame {
         out.write(historyMsg);
         out.flush();
 
-        byte[] header = new byte[5];
-        in.readFully(header);
-        int dataLength = ((header[1] & 0xFF) << 24)
-                | ((header[2] & 0xFF) << 16)
-                | ((header[3] & 0xFF) << 8)
-                | (header[4] & 0xFF);
-
-        byte[] fullMessage = new byte[5 + dataLength];
-        System.arraycopy(header, 0, fullMessage, 0, 5);
-        if (dataLength > 0) {
-            in.readFully(fullMessage, 5, dataLength);
+        while (true) {
+            Protocol.Message msg = pollResponse();
+            if (msg == null) {
+                throw new IOException("Interrupted while waiting for response");
+            }
+            if (msg.getCmd() == Protocol.CMD_OK || msg.getCmd() == Protocol.CMD_ERROR) {
+                return msg.getData();
+            }
         }
-        Protocol.Message response = Protocol.unpack(fullMessage);
-        return response.getData();
     }
 
     private boolean textExistsInHistory(String text, String json) {
@@ -382,9 +385,10 @@ public class GUIClipboardClient extends JFrame {
                 out.flush();
                 SimpleLogger.dataTransfer("OUTGOING", "DELETE_REQUEST", deleteMsg.length, "Deleting history item at index " + index);
 
-                byte[] responseHeader = new byte[5];
-                in.readFully(responseHeader);
-                Protocol.Message response = Protocol.unpack(responseHeader);
+                Protocol.Message response = pollResponse();
+                if (response == null) {
+                    throw new IOException("Interrupted while waiting for delete response");
+                }
 
                 SwingUtilities.invokeLater(() -> {
                     if (response.isSuccessful()) {
@@ -627,12 +631,62 @@ public class GUIClipboardClient extends JFrame {
                 .replace("\n", "<br>");
     }
 
-    private void startAutoRefresh() {
-        if (refreshTimer != null) {
-            refreshTimer.stop();
+    private void startReaderThread() {
+        responseQueue = new LinkedBlockingQueue<>();
+        running = true;
+        readerThread = new Thread(() -> {
+            SimpleLogger.info("Reader thread started");
+            while (running && connected) {
+                try {
+                    byte[] header = new byte[5];
+                    in.readFully(header);
+                    int dataLength = ((header[1] & 0xFF) << 24)
+                            | ((header[2] & 0xFF) << 16)
+                            | ((header[3] & 0xFF) << 8)
+                            | (header[4] & 0xFF);
+                    byte[] dataBytes = new byte[dataLength];
+                    if (dataLength > 0) {
+                        in.readFully(dataBytes);
+                    }
+                    byte[] fullMsg = new byte[5 + dataLength];
+                    System.arraycopy(header, 0, fullMsg, 0, 5);
+                    System.arraycopy(dataBytes, 0, fullMsg, 5, dataLength);
+                    Protocol.Message msg = Protocol.unpack(fullMsg);
+
+                    if (msg.getCmd() == Protocol.CMD_NOTIFY_REFRESH) {
+                        SimpleLogger.info("Received NOTIFY_REFRESH from server");
+                        SwingUtilities.invokeLater(() -> {
+                            if (connected) {
+                                refreshHistory();
+                            }
+                        });
+                    } else {
+                        responseQueue.offer(msg);
+                    }
+                } catch (IOException e) {
+                    if (running) {
+                        SimpleLogger.error("Reader thread IO error: " + e.getMessage());
+                        SwingUtilities.invokeLater(() -> {
+                            connected = false;
+                            updateComponentStates();
+                        });
+                    }
+                    break;
+                }
+            }
+            SimpleLogger.info("Reader thread stopped");
+        }, "ServerReader");
+        readerThread.setDaemon(true);
+        readerThread.start();
+    }
+
+    private Protocol.Message pollResponse() {
+        try {
+            return responseQueue.poll(10, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
         }
-        refreshTimer = new Timer(30000, e -> refreshHistory());
-        refreshTimer.start();
     }
 
     private void updateComponentStates() {

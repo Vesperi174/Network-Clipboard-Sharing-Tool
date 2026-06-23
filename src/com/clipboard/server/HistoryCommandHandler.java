@@ -20,7 +20,7 @@ public class HistoryCommandHandler implements CommandHandler {
     }
 
     @Override
-    public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+    public boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
         SimpleLogger.info("Processing HISTORY request from " + clientAddr);
         System.out.println("[Server] HISTORY request from " + clientAddr);
 
@@ -42,5 +42,6 @@ public class HistoryCommandHandler implements CommandHandler {
         outputStream.flush();
 
         SimpleLogger.networkOperation("HISTORY_RESPONSE", "Sent history response to " + clientAddr + ", items count: " + history.size());
+        return false;
     }
 }

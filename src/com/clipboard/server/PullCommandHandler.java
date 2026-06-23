@@ -19,7 +19,7 @@ public class PullCommandHandler implements CommandHandler {
     }
 
     @Override
-    public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+    public boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
         SimpleLogger.info("Processing PULL request from " + clientAddr);
         System.out.println("[Server] PULL from " + clientAddr);
         String text = historyManager.getLatestContent();
@@ -29,5 +29,6 @@ public class PullCommandHandler implements CommandHandler {
         outputStream.flush();
         
         SimpleLogger.networkOperation("PULL_RESPONSE", "Sent PULL response to " + clientAddr + ", text length: " + text.length());
+        return false;
     }
 }

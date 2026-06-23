@@ -17,7 +17,8 @@ public interface CommandHandler {
      * @param outputStream 输出流
      * @param clientAddr 客户端地址
      * @param message 协议消息
+     * @return true 表示操作成功且需要通知其他客户端刷新
      * @throws IOException IO异常
      */
-    void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException;
+    boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException;
 }

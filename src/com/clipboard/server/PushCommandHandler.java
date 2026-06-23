@@ -20,7 +20,7 @@ public class PushCommandHandler implements CommandHandler {
     }
 
     @Override
-    public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+    public boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
         String rawData = message.getData();
         int sepIndex = rawData.indexOf('\n');
         String username;
@@ -43,5 +43,6 @@ public class PushCommandHandler implements CommandHandler {
         outputStream.flush();
 
         SimpleLogger.networkOperation("PUSH_RESPONSE", "Sent OK response to " + clientAddr);
+        return true;
     }
 }

@@ -19,7 +19,7 @@ public class DeleteCommandHandler implements CommandHandler {
     }
 
     @Override
-    public void handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
+    public boolean handle(DataInputStream inputStream, DataOutputStream outputStream, String clientAddr, Protocol.Message message) throws IOException {
         String indexStr = message.getData();
         SimpleLogger.info("Processing DELETE request from " + clientAddr + ", index: " + indexStr);
         System.out.println("[Server] DELETE from " + clientAddr + ", index=" + indexStr);
@@ -31,17 +31,20 @@ public class DeleteCommandHandler implements CommandHandler {
                 outputStream.write(okResponse);
                 outputStream.flush();
                 SimpleLogger.networkOperation("DELETE_RESPONSE", "Sent OK response to " + clientAddr);
+                return true;
             } else {
                 byte[] errorResponse = Protocol.createErrorMessage("Invalid index");
                 outputStream.write(errorResponse);
                 outputStream.flush();
                 SimpleLogger.error("DELETE failed: invalid index " + index + " from " + clientAddr);
+                return false;
             }
         } catch (NumberFormatException e) {
             byte[] errorResponse = Protocol.createErrorMessage("Invalid index format");
             outputStream.write(errorResponse);
             outputStream.flush();
             SimpleLogger.error("DELETE failed: invalid index format from " + clientAddr);
+            return false;
         }
     }
 }
