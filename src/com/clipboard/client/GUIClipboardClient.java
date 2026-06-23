@@ -13,6 +13,8 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -39,10 +41,9 @@ public class GUIClipboardClient extends JFrame {
     private JLabel statusLabel;
     
     private boolean connected = false;
-    private boolean sending = false;
     private String lastSentText = "";
     private Timer refreshTimer;
-    private final Object networkLock = new Object();
+    private ExecutorService networkExecutor;
     
     private JScrollPane scrollPane;
     private JScrollPane inputScrollPane;
@@ -53,11 +54,16 @@ public class GUIClipboardClient extends JFrame {
         setSize(800, 600);
         setLocationRelativeTo(null);
         
+        networkExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "NetworkWorker");
+            t.setDaemon(true);
+            return t;
+        });
+        
         initializeComponents();
         layoutComponents();
         setupEventHandlers();
         
-        // 初始化时禁用相关组件
         updateComponentStates();
     }
 
@@ -171,6 +177,14 @@ public class GUIClipboardClient extends JFrame {
             in = new DataInputStream(socket.getInputStream());
             connected = true;
             
+            if (networkExecutor == null || networkExecutor.isShutdown()) {
+                networkExecutor = Executors.newSingleThreadExecutor(r -> {
+                    Thread t = new Thread(r, "NetworkWorker");
+                    t.setDaemon(true);
+                    return t;
+                });
+            }
+            
             statusLabel.setText("已连接到 " + host + ":" + port);
             updateComponentStates();
             
@@ -202,6 +216,11 @@ public class GUIClipboardClient extends JFrame {
             if (refreshTimer != null) {
                 refreshTimer.stop();
                 SimpleLogger.debug("Auto-refresh timer stopped");
+            }
+            
+            if (networkExecutor != null && !networkExecutor.isShutdown()) {
+                networkExecutor.shutdownNow();
+                SimpleLogger.debug("Network executor shutdown");
             }
             
             if (out != null) {
@@ -248,34 +267,22 @@ public class GUIClipboardClient extends JFrame {
             JOptionPane.showMessageDialog(this, "该内容与上次发送相同，请修改后再发送！", "提示", JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-
-        if (sending) {
-            SimpleLogger.warn("Send in progress, ignoring duplicate click");
-            JOptionPane.showMessageDialog(this, "正在发送中，请稍候...", "提示", JOptionPane.INFORMATION_MESSAGE);
-            return;
-        }
         
-        sending = true;
         lastSentText = text;
         SimpleLogger.guiAction("SEND_TEXT", "User initiated sending of text (length: " + text.length() + " chars)");
         
-        Thread sendThread = new Thread(() -> {
+        networkExecutor.submit(() -> {
             try {
                 SimpleLogger.networkOperation("SEND_PUSH_REQUEST", "Sending PUSH message with text: " + (text.length() > 50 ? text.substring(0, 50) + "..." : text));
                 
                 byte[] pushMsg = Protocol.createPushMessage(text);
-                byte[] responseHeader;
+                out.write(pushMsg);
+                out.flush();
+                SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
 
-                synchronized (networkLock) {
-                    out.write(pushMsg);
-                    out.flush();
-                    SimpleLogger.dataTransfer("OUTGOING", "PUSH_REQUEST", pushMsg.length, "Text pushed to server");
-
-                    responseHeader = new byte[5];
-                    in.readFully(responseHeader);
-                }
+                byte[] responseHeader = new byte[5];
+                in.readFully(responseHeader);
                 Protocol.Message response = Protocol.unpack(responseHeader);
-                sending = false;
 
                 GUIClipboardClient self = this;
                 Protocol.Message finalResponse = response;
@@ -291,7 +298,6 @@ public class GUIClipboardClient extends JFrame {
                     }
                 });
             } catch (IOException e) {
-                sending = false;
                 SimpleLogger.error("IO Exception occurred while sending text", e);
                 GUIClipboardClient self = this;
                 SwingUtilities.invokeLater(() -> {
@@ -301,8 +307,6 @@ public class GUIClipboardClient extends JFrame {
                 });
             }
         });
-        
-        sendThread.start();
     }
 
     private void refreshHistory() {
@@ -313,45 +317,37 @@ public class GUIClipboardClient extends JFrame {
         
         SimpleLogger.debug("Initiating history refresh");
         
-        // 在后台线程中执行网络操作，避免阻塞UI线程
-        Thread refreshThread = new Thread(() -> {
+        networkExecutor.submit(() -> {
             try {
                 byte[] historyMsg = Protocol.createHistoryMessage();
                 SimpleLogger.networkOperation("SEND_HISTORY_REQUEST", "Sending HISTORY request to server");
                 
-                byte[] responseHeader;
-                String historyJson;
-                Protocol.Message response;
-                synchronized (networkLock) {
-                    out.write(historyMsg);
-                    out.flush();
-                    SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
+                out.write(historyMsg);
+                out.flush();
+                SimpleLogger.dataTransfer("OUTGOING", "HISTORY_REQUEST", historyMsg.length, "Requesting history from server");
 
-                    responseHeader = new byte[5];
-                    in.readFully(responseHeader);
-                    response = Protocol.unpack(responseHeader);
+                byte[] responseHeader = new byte[5];
+                in.readFully(responseHeader);
+                Protocol.Message response = Protocol.unpack(responseHeader);
 
-                    int dataLength = ((responseHeader[1] & 0xFF) << 24)
-                            | ((responseHeader[2] & 0xFF) << 16)
-                            | ((responseHeader[3] & 0xFF) << 8)
-                            | (responseHeader[4] & 0xFF);
-                    historyJson = "";
-                    if (dataLength > 0) {
-                        byte[] dataBytes = new byte[dataLength];
-                        in.readFully(dataBytes);
-                        historyJson = new String(dataBytes, "UTF-8");
-                    }
+                int dataLength = ((responseHeader[1] & 0xFF) << 24)
+                        | ((responseHeader[2] & 0xFF) << 16)
+                        | ((responseHeader[3] & 0xFF) << 8)
+                        | (responseHeader[4] & 0xFF);
+                String historyJson = "";
+                if (dataLength > 0) {
+                    byte[] dataBytes = new byte[dataLength];
+                    in.readFully(dataBytes);
+                    historyJson = new String(dataBytes, "UTF-8");
                 }
 
-                // 在EDT中更新UI
-                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
-                String jsonCopy = historyJson; // 保存historyJson引用以在lambda中使用
-                Protocol.Message finalResponse = response; // 保存response引用以在lambda中使用
+                GUIClipboardClient self = this;
+                String jsonCopy = historyJson;
+                Protocol.Message finalResponse = response;
                 SwingUtilities.invokeLater(() -> {
                     if (finalResponse.isSuccessful()) {
                         SimpleLogger.info("Successfully retrieved history from server, items count: " + 
                             (jsonCopy.isEmpty() ? 0 : jsonCopy.split(",\"").length));
-                        // 解析JSON历史记录
                         self.parseAndDisplayHistory(jsonCopy);
                     } else {
                         SimpleLogger.error("Failed to retrieve history: " + finalResponse.getData());
@@ -360,8 +356,7 @@ public class GUIClipboardClient extends JFrame {
                 });
             } catch (IOException e) {
                 SimpleLogger.error("IO Exception occurred while refreshing history", e);
-                // 在EDT中更新UI
-                GUIClipboardClient self = this; // 保存this引用以在lambda中使用
+                GUIClipboardClient self = this;
                 SwingUtilities.invokeLater(() -> {
                     JOptionPane.showMessageDialog(self, "获取历史记录时发生错误: " + e.getMessage(), "错误", JOptionPane.ERROR_MESSAGE);
                     self.connected = false;
@@ -369,8 +364,6 @@ public class GUIClipboardClient extends JFrame {
                 });
             }
         });
-        
-        refreshThread.start();
     }
 
     private void parseAndDisplayHistory(String json) {
